@@ -1,8 +1,12 @@
 import os
+from pathlib import Path
 
 import gridfs
 import pymongo
+from dotenv import load_dotenv
 from motor.motor_asyncio import AsyncIOMotorClient
+
+load_dotenv(Path(__file__).parent / ".env")
 
 mongo_url = os.environ["MONGO_URL"]
 db_name = os.environ["DB_NAME"]

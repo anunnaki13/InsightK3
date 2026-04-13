@@ -2,12 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap");
+
 body {
     margin: 0;
-    font-family:
-        -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
-        "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
-        sans-serif;
+    font-family: "Plus Jakarta Sans", "Segoe UI", sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
 }
@@ -19,31 +18,31 @@ code {
 
 @layer base {
     :root {
-        --background: 0 0% 100%;
-        --foreground: 0 0% 3.9%;
+        --background: 42 38% 96%;
+        --foreground: 172 18% 13%;
         --card: 0 0% 100%;
-        --card-foreground: 0 0% 3.9%;
+        --card-foreground: 172 18% 13%;
         --popover: 0 0% 100%;
-        --popover-foreground: 0 0% 3.9%;
-        --primary: 0 0% 9%;
-        --primary-foreground: 0 0% 98%;
-        --secondary: 0 0% 96.1%;
-        --secondary-foreground: 0 0% 9%;
-        --muted: 0 0% 96.1%;
-        --muted-foreground: 0 0% 45.1%;
-        --accent: 0 0% 96.1%;
-        --accent-foreground: 0 0% 9%;
+        --popover-foreground: 172 18% 13%;
+        --primary: 172 56% 25%;
+        --primary-foreground: 45 45% 97%;
+        --secondary: 154 20% 92%;
+        --secondary-foreground: 172 18% 13%;
+        --muted: 156 18% 90%;
+        --muted-foreground: 174 11% 35%;
+        --accent: 38 44% 90%;
+        --accent-foreground: 172 18% 13%;
         --destructive: 0 84.2% 60.2%;
         --destructive-foreground: 0 0% 98%;
-        --border: 0 0% 89.8%;
-        --input: 0 0% 89.8%;
-        --ring: 0 0% 3.9%;
-        --chart-1: 12 76% 61%;
-        --chart-2: 173 58% 39%;
-        --chart-3: 197 37% 24%;
-        --chart-4: 43 74% 66%;
-        --chart-5: 27 87% 67%;
-        --radius: 0.5rem;
+        --border: 154 18% 82%;
+        --input: 154 18% 82%;
+        --ring: 172 56% 25%;
+        --chart-1: 172 56% 25%;
+        --chart-2: 43 72% 56%;
+        --chart-3: 18 72% 52%;
+        --chart-4: 207 42% 42%;
+        --chart-5: 144 26% 46%;
+        --radius: 1rem;
     }
     .dark {
         --background: 0 0% 3.9%;
@@ -79,6 +78,21 @@ code {
     }
     body {
         @apply bg-background text-foreground;
+        background:
+            radial-gradient(circle at top left, rgba(173, 225, 214, 0.32), transparent 28%),
+            radial-gradient(circle at top right, rgba(245, 199, 128, 0.18), transparent 24%),
+            linear-gradient(180deg, #f5f1e8 0%, #edf3ef 35%, #e3ece8 100%);
+        min-height: 100vh;
+    }
+
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6 {
+        font-family: "Manrope", "Plus Jakarta Sans", sans-serif;
+        letter-spacing: -0.03em;
     }
 }
 

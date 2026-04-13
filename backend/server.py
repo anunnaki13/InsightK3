@@ -6,12 +6,12 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
 
+ROOT_DIR = Path(__file__).parent
+load_dotenv(ROOT_DIR / ".env")
+
 from database import client
 from routers.audit_smk3 import router as audit_smk3_router
 from routers.auth import router as auth_router
-
-ROOT_DIR = Path(__file__).parent
-load_dotenv(ROOT_DIR / ".env")
 
 logging.basicConfig(
     level=logging.INFO,

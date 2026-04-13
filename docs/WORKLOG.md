@@ -10,3 +10,6 @@
 - Menambahkan template environment untuk backend dan frontend.
 - Memulai Step 2 blueprint dengan memecah backend monolitik menjadi `database.py`, `models/`, dan `routers/`.
 - Menjadikan `backend/server.py` sebagai entry point tipis yang hanya memuat app, middleware, dan router registration.
+- Menutup gap load order environment pada backend agar module import tidak bergantung pada urutan eksekusi `server.py`.
+- Memulai modernisasi shell frontend: layout responsif baru, visual direction premium, dan branding `InsightK3`.
+- Verifikasi backend lulus `compileall`; verifikasi frontend build tertunda karena `yarn` belum tersedia di shell ini.

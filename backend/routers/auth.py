@@ -1,6 +1,9 @@
+import os
+from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
 import jwt
+from dotenv import load_dotenv
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from passlib.context import CryptContext
@@ -8,11 +11,13 @@ from passlib.context import CryptContext
 from database import db
 from models.audit_models import Token, User, UserCreate, UserLogin
 
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+
 router = APIRouter(prefix="/api")
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer()
-SECRET_KEY = __import__("os").environ.get("JWT_SECRET_KEY", "smk3-audit-secret-key-change-in-production")
+SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "smk3-audit-secret-key-change-in-production")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7
 

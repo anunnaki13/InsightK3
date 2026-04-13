@@ -1,17 +1,12 @@
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
 body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 .App {
   min-height: 100vh;
-  background: linear-gradient(135deg, #f5f7fa 0%, #e8eef3 100%);
+  background:
+    radial-gradient(circle at top left, rgba(173, 225, 214, 0.32), transparent 28%),
+    radial-gradient(circle at top right, rgba(245, 199, 128, 0.18), transparent 24%),
+    linear-gradient(180deg, #f5f1e8 0%, #edf3ef 35%, #e3ece8 100%);
 }

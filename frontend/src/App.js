@@ -116,10 +116,13 @@ function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600"></div>
-          <p className="mt-4 text-slate-600">Memuat...</p>
+      <div className="min-h-screen flex items-center justify-center px-6">
+        <div className="w-full max-w-md rounded-[32px] border border-white/70 bg-white/75 p-10 text-center shadow-[0_28px_90px_rgba(34,57,49,0.14)] backdrop-blur-xl">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-[22px] bg-[linear-gradient(135deg,#0f5f53_0%,#2b8a78_100%)] shadow-[0_18px_40px_rgba(15,95,83,0.24)]">
+            <div className="h-7 w-7 animate-spin rounded-full border-[3px] border-white/40 border-t-white"></div>
+          </div>
+          <h1 className="mt-6 text-3xl font-extrabold text-slate-950">InsightK3</h1>
+          <p className="mt-2 text-sm text-slate-600">Menyiapkan workspace audit dan risk intelligence.</p>
         </div>
       </div>
     );
