@@ -8,3 +8,5 @@
 - Menambahkan `backend/services/ai_service.py` sebagai service AI terpusat untuk OpenRouter.
 - Mengubah endpoint analisis audit existing agar tidak lagi bergantung pada `emergentintegrations`.
 - Menambahkan template environment untuk backend dan frontend.
+- Memulai Step 2 blueprint dengan memecah backend monolitik menjadi `database.py`, `models/`, dan `routers/`.
+- Menjadikan `backend/server.py` sebagai entry point tipis yang hanya memuat app, middleware, dan router registration.
