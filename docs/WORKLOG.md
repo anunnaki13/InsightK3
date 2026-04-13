@@ -22,3 +22,4 @@
 - Menambahkan auto-create draft risk item dari hasil audit dengan status non-confirm untuk integrasi awal audit ke ERM.
 - Memperkuat fondasi data ERM dengan index unik untuk `risk_items.id` dan `risk_items.risk_code`.
 - Memperluas halaman ERM menjadi workspace yang lebih operasional dengan filter, panel detail, dan histori aktivitas risk item.
+- Menyiapkan shell navigasi dan halaman placeholder premium untuk modul v2 berikutnya: underwriting survey, field survey, emergency equipment, dan consolidated heatmap.

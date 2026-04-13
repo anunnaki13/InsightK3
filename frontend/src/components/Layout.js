@@ -6,15 +6,19 @@ import {
   Bell,
   ChevronRight,
   ClipboardCheck,
+  ClipboardList,
   FileCheck,
   FileText,
   LayoutDashboard,
   ListChecks,
   LogOut,
   Menu,
+  PanelsTopLeft,
+  ScrollText,
   ShieldAlert,
   ShieldCheck,
   Sparkles,
+  Siren,
 } from 'lucide-react';
 
 const Layout = ({ children }) => {
@@ -30,6 +34,10 @@ const Layout = ({ children }) => {
     { name: 'Rekomendasi', path: '/recommendations', icon: FileText, hint: 'Action tracking' },
     { name: 'Laporan', path: '/reports', icon: FileText, hint: 'Output manajemen' },
     { name: 'ERM Risk', path: '/erm-risk', icon: ShieldAlert, hint: 'Risk register awal', roles: ['admin', 'auditor', 'risk_officer', 'management'] },
+    { name: 'Underwriting', path: '/underwriting-survey', icon: ScrollText, hint: 'Survey underwriting', roles: ['admin', 'risk_officer', 'surveyor', 'management'] },
+    { name: 'Field Survey', path: '/field-risk-survey', icon: ClipboardList, hint: 'Survey lapangan', roles: ['admin', 'risk_officer', 'surveyor', 'management'] },
+    { name: 'Equipment', path: '/emergency-equipment', icon: Siren, hint: 'Readiness tanggap darurat', roles: ['admin', 'risk_officer', 'surveyor', 'management'] },
+    { name: 'Heatmap', path: '/risk-heatmap', icon: PanelsTopLeft, hint: 'Dashboard konsolidasi', roles: ['admin', 'auditor', 'risk_officer', 'management'] },
   ].filter((item) => !item.roles || item.roles.includes(user?.role));
 
   const isActive = (path) => location.pathname === path;

@@ -11,6 +11,7 @@ import AuditPage from './pages/AuditPage';
 import RecommendationsPage from './pages/RecommendationsPage';
 import ReportsPage from './pages/ReportsPage';
 import ERMRiskPage from './pages/ERMRiskPage';
+import ModuleLaunchPage from './pages/ModuleLaunchPage';
 import '@/App.css';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -165,6 +166,22 @@ function App() {
             <Route
               path="/erm-risk"
               element={user ? <ERMRiskPage /> : <Navigate to="/auth" replace />}
+            />
+            <Route
+              path="/underwriting-survey"
+              element={user ? <ModuleLaunchPage title="Underwriting Survey" badge="Module B" description="Persiapkan baseline survey underwriting untuk pengamatan kondisi plant, catatan risiko awal, dan integrasi ke register ERM." timeline="Setelah stabilisasi ERM Risk Register" highlights={['Form survey underwriting premium', 'Integrasi temuan ke risk register', 'Ringkasan temuan untuk reviewer dan management']} /> : <Navigate to="/auth" replace />}
+            />
+            <Route
+              path="/field-risk-survey"
+              element={user ? <ModuleLaunchPage title="Field Risk Survey" badge="Module C" description="Workspace survey lapangan untuk observasi bahaya aktual, dokumentasi kontrol, dan tindak lanjut berbasis area operasi." timeline="Sesudah struktur data underwriting siap" highlights={['Survey workflow untuk surveyor', 'Attachment dan dokumentasi lapangan', 'Penghubung ke heatmap dan equipment readiness']} /> : <Navigate to="/auth" replace />}
+            />
+            <Route
+              path="/emergency-equipment"
+              element={user ? <ModuleLaunchPage title="Emergency Equipment Readiness" badge="Module D" description="Monitoring kesiapan alat tanggap darurat secara terstruktur untuk memetakan gap inspeksi, status kesiapan, dan prioritas perbaikan." timeline="Sesudah survey lapangan dasar berjalan" highlights={['Register alat dan status readiness', 'Indikator overdue inspeksi', 'Prioritas equipment kritikal']} /> : <Navigate to="/auth" replace />}
+            />
+            <Route
+              path="/risk-heatmap"
+              element={user ? <ModuleLaunchPage title="Risk Heatmap & Consolidated Dashboard" badge="Module E" description="Executive view untuk memusatkan heatmap risiko, tren mitigasi, dan konsolidasi lintas modul dalam satu tampilan manajerial." timeline="Setelah modul-modul operasional memiliki data cukup" highlights={['Heatmap enterprise', 'Dashboard konsolidasi lintas area', 'Ringkasan risiko prioritas untuk management']} /> : <Navigate to="/auth" replace />}
             />
           </Routes>
           <Toaster position="top-right" richColors />
