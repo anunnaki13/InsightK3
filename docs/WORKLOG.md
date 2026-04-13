@@ -15,3 +15,5 @@
 - Verifikasi backend lulus `compileall`; verifikasi frontend build tertunda karena `yarn` belum tersedia di shell ini.
 - Mendesain ulang halaman `Dashboard`, `Reports`, dan struktur utama `Audit` agar selaras dengan shell premium yang baru.
 - Meningkatkan hierarki informasi, panel summary, CTA, dan presentasi status agar lebih layak untuk software operasional/manajerial.
+- Menyegarkan halaman `Auth`, `Criteria`, `Clauses`, dan `Recommendations` agar seluruh frontend sekarang memakai bahasa visual yang konsisten.
+- Menjaga seluruh perubahan tetap pada layer presentasi dan experience tanpa mengubah alur bisnis utama aplikasi.
