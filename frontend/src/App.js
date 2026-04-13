@@ -13,6 +13,7 @@ import ReportsPage from './pages/ReportsPage';
 import ERMRiskPage from './pages/ERMRiskPage';
 import ModuleLaunchPage from './pages/ModuleLaunchPage';
 import UnderwritingPage from './pages/UnderwritingPage';
+import FieldSurveyPage from './pages/FieldSurveyPage';
 import '@/App.css';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -174,7 +175,7 @@ function App() {
             />
             <Route
               path="/field-risk-survey"
-              element={user ? <ModuleLaunchPage title="Field Risk Survey" badge="Module C" description="Workspace survey lapangan untuk observasi bahaya aktual, dokumentasi kontrol, dan tindak lanjut berbasis area operasi." timeline="Sesudah struktur data underwriting siap" highlights={['Survey workflow untuk surveyor', 'Attachment dan dokumentasi lapangan', 'Penghubung ke heatmap dan equipment readiness']} /> : <Navigate to="/auth" replace />}
+              element={user ? <FieldSurveyPage /> : <Navigate to="/auth" replace />}
             />
             <Route
               path="/emergency-equipment"

@@ -28,6 +28,24 @@ UNDERWRITING_TEMPLATE_ITEMS = [
     {"category_code": "ENV", "item_code": "ENV-001", "item_description": "Pengelolaan limbah dan pemenuhan izin lingkungan terjaga", "is_critical": False},
 ]
 
+SURVEY_TYPES = [
+    "daily_walk",
+    "weekly_patrol",
+    "monthly_inspection",
+    "pre_work",
+    "special",
+]
+
+FINDING_TYPES = [
+    "unsafe_condition",
+    "unsafe_act",
+    "near_miss",
+    "non_conformance",
+    "positive_finding",
+]
+
+SEVERITY_LEVELS = ["low", "medium", "high", "critical"]
+
 
 class UnderwritingSurveyCreate(BaseModel):
     title: str
@@ -106,3 +124,92 @@ class SurveyChecklistItemUpdate(BaseModel):
     recommendation: Optional[str] = None
     deadline: Optional[str] = None
     pic: Optional[str] = None
+
+
+class FieldSurveyCreate(BaseModel):
+    survey_type: str
+    area_codes: List[str]
+    planned_date: Optional[str] = None
+    actual_date: str
+    surveyor_ids: List[str] = Field(default_factory=list)
+    summary_notes: Optional[str] = None
+
+
+class FieldSurvey(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    survey_code: str = ""
+    survey_type: str
+    area_codes: List[str]
+    planned_date: Optional[str] = None
+    actual_date: str
+    surveyor_ids: List[str] = Field(default_factory=list)
+    status: str = "open"
+    summary_notes: Optional[str] = None
+    created_by: str = ""
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    completed_at: Optional[str] = None
+
+
+class FieldFindingCreate(BaseModel):
+    survey_id: Optional[str] = None
+    area_code: str
+    sub_location: str
+    finding_type: str
+    description: str
+    severity: str
+    potential_consequence: Optional[str] = None
+    immediate_action: Optional[str] = None
+    recommendation: str
+    pic_user_id: Optional[str] = None
+    deadline: Optional[str] = None
+    related_clause_id: Optional[str] = None
+    gps_latitude: Optional[float] = None
+    gps_longitude: Optional[float] = None
+
+
+class FieldFinding(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    survey_id: Optional[str] = None
+    finding_code: str = ""
+    area_code: str
+    sub_location: str
+    finding_type: str
+    description: str
+    severity: str
+    potential_consequence: Optional[str] = None
+    photo_file_ids: List[str] = Field(default_factory=list)
+    immediate_action: Optional[str] = None
+    recommendation: str
+    pic_user_id: Optional[str] = None
+    deadline: Optional[str] = None
+    status: str = "open"
+    close_evidence_file_ids: List[str] = Field(default_factory=list)
+    closed_by: Optional[str] = None
+    closed_at: Optional[str] = None
+    related_risk_id: Optional[str] = None
+    related_clause_id: Optional[str] = None
+    gps_latitude: Optional[float] = None
+    gps_longitude: Optional[float] = None
+    created_by: str = ""
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+
+class FieldFindingUpdate(BaseModel):
+    sub_location: Optional[str] = None
+    finding_type: Optional[str] = None
+    description: Optional[str] = None
+    severity: Optional[str] = None
+    potential_consequence: Optional[str] = None
+    immediate_action: Optional[str] = None
+    recommendation: Optional[str] = None
+    pic_user_id: Optional[str] = None
+    deadline: Optional[str] = None
+    status: Optional[str] = None
+    related_risk_id: Optional[str] = None
+    related_clause_id: Optional[str] = None
+
+
+class FieldFindingClose(BaseModel):
+    close_note: Optional[str] = None

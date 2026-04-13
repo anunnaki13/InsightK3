@@ -25,3 +25,5 @@
 - Menyiapkan shell navigasi dan halaman placeholder premium untuk modul v2 berikutnya: underwriting survey, field survey, emergency equipment, dan consolidated heatmap.
 - Mengimplementasikan fondasi Modul B Underwriting Survey pada backend: model survey, seed template checklist, scoring weighted, router API, dan integrasi temuan kritikal ke ERM.
 - Mengganti placeholder underwriting dengan workspace frontend yang dapat membuat survey, generate checklist, mengisi skor, dan melihat breakdown hasil underwriting.
+- Mengimplementasikan fondasi Modul C Field Survey pada backend: survey patrol, temuan lapangan, dashboard overdue, close workflow, dan auto-link severity tinggi ke ERM.
+- Mengganti placeholder field survey dengan workspace frontend untuk membuat survey, quick report finding, menutup temuan, dan memantau agregasi area.
