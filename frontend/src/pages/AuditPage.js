@@ -17,7 +17,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
 import { id as idLocale } from 'date-fns/locale';
-import { Upload, FileText, Trash2, Play, CheckCircle, XCircle, Loader2, Eye, Download, Archive, RefreshCw, Calendar as CalendarIcon, Save } from 'lucide-react';
+import { Upload, FileText, Trash2, Play, CheckCircle, XCircle, Loader2, Eye, Download, Archive, RefreshCw, Calendar as CalendarIcon, Save, ShieldCheck, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 
 const AuditPage = () => {
@@ -271,6 +271,14 @@ const AuditPage = () => {
     }
   };
 
+  const aiReadiness = selectedClause
+    ? !selectedClause.knowledge_base
+      ? 'Knowledge base belum siap'
+      : documents.length === 0
+        ? 'Evidence belum tersedia'
+        : 'Siap dianalisis'
+    : 'Pilih klausul';
+
   return (
     <Layout>
       {/* Preview Dialog */}
@@ -388,16 +396,61 @@ const AuditPage = () => {
       </AlertDialog>
 
       <div className="space-y-6" data-testid="audit-page">
-        <div className="flex items-start justify-between">
+        <section className="grid gap-5 xl:grid-cols-[1.3fr_0.9fr]">
+          <Card className="overflow-hidden rounded-[30px] border-0 bg-[linear-gradient(135deg,#162f53_0%,#254d78_58%,#346794_100%)] text-white shadow-[0_32px_90px_rgba(22,47,83,0.26)]">
+            <CardContent className="p-7 md:p-8">
+              <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-sky-100/75">Audit Workspace</p>
+              <h1 className="mt-3 text-4xl font-extrabold leading-tight md:text-5xl">Evidence review yang lebih tertata untuk keputusan auditor yang lebih tegas.</h1>
+              <p className="mt-4 max-w-2xl text-sm leading-6 text-sky-50/80 md:text-base">
+                Pilih klausul, unggah dokumen pendukung, jalankan analisis AI sebagai tools bantuan, lalu catat keputusan auditor sebagai sumber kebenaran final.
+              </p>
+              <div className="mt-7 grid gap-3 sm:grid-cols-3">
+                <div className="rounded-[22px] border border-white/14 bg-white/10 p-4">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-sky-100/70">Selected Clause</p>
+                  <p className="mt-2 text-lg font-extrabold">{selectedClause?.clause_number || '--'}</p>
+                  <p className="mt-1 text-xs text-sky-50/70">{selectedClause ? 'Klausul aktif' : 'Belum dipilih'}</p>
+                </div>
+                <div className="rounded-[22px] border border-white/14 bg-white/10 p-4">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-sky-100/70">Documents</p>
+                  <p className="mt-2 text-lg font-extrabold">{documents.length}</p>
+                  <p className="mt-1 text-xs text-sky-50/70">Evidence untuk klausul aktif</p>
+                </div>
+                <div className="rounded-[22px] border border-white/14 bg-white/10 p-4">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-sky-100/70">AI Readiness</p>
+                  <p className="mt-2 text-lg font-extrabold">{aiReadiness}</p>
+                  <p className="mt-1 text-xs text-sky-50/70">Validasi awal sebelum analisis</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="rounded-[30px] border-white/70 bg-white/80 shadow-[0_24px_70px_rgba(45,68,58,0.10)] backdrop-blur-xl">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Sparkles className="h-5 w-5 text-sky-700" />
+                Audit Flow
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <div className="rounded-[20px] bg-slate-50 px-4 py-3 text-slate-700">1. Pilih kriteria dan klausul target.</div>
+              <div className="rounded-[20px] bg-slate-50 px-4 py-3 text-slate-700">2. Pastikan knowledge base klausul tersedia.</div>
+              <div className="rounded-[20px] bg-slate-50 px-4 py-3 text-slate-700">3. Upload evidence dan lakukan review dokumen.</div>
+              <div className="rounded-[20px] bg-slate-50 px-4 py-3 text-slate-700">4. Jalankan analisis AI untuk mendapatkan masukan awal.</div>
+              <div className="rounded-[20px] bg-slate-50 px-4 py-3 text-slate-700">5. Simpan keputusan auditor sebagai hasil final.</div>
+            </CardContent>
+          </Card>
+        </section>
+
+        <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-4xl font-bold mb-2" style={{ fontFamily: 'Manrope, sans-serif', color: '#1a1a1a' }}>Audit Dokumen</h1>
-            <p className="text-slate-600">Upload dokumen evidence dan lakukan audit AI</p>
+            <h2 className="text-2xl font-extrabold text-slate-950">Evidence and Assessment</h2>
+            <p className="mt-1 text-sm text-slate-600">Panel kerja utama untuk upload, analisis, dan finalisasi keputusan auditor.</p>
           </div>
           {user?.role === 'admin' && (
             <Button
               variant="outline"
               onClick={() => setShowResetDialog(true)}
-              className="border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700"
+              className="rounded-[18px] border-red-300 bg-white/80 text-red-600 hover:bg-red-50 hover:text-red-700"
               data-testid="hard-reset-button"
             >
               <RefreshCw className="w-4 h-4 mr-2" />
@@ -408,9 +461,9 @@ const AuditPage = () => {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Selection Panel */}
-          <Card className="lg:col-span-1 shadow-md" data-testid="selection-panel">
+          <Card className="lg:col-span-1 rounded-[28px] border-white/70 bg-white/80 shadow-[0_22px_55px_rgba(43,67,58,0.10)]" data-testid="selection-panel">
             <CardHeader>
-              <CardTitle>Pilih Klausul</CardTitle>
+              <CardTitle className="text-xl">Pilih Klausul</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
@@ -435,15 +488,15 @@ const AuditPage = () => {
                       <button
                         key={clause.id}
                         onClick={() => setSelectedClause(clause)}
-                        className={`w-full text-left p-3 rounded-lg border transition-all ${
+                        className={`w-full rounded-[20px] border p-4 text-left transition-all ${
                           selectedClause?.id === clause.id
-                            ? 'bg-emerald-50 border-emerald-500'
-                            : 'bg-white hover:bg-slate-50 border-slate-200'
+                            ? 'border-emerald-300 bg-emerald-50 shadow-sm'
+                            : 'border-slate-200 bg-white hover:bg-slate-50'
                         }`}
                         data-testid="clause-select-button"
                       >
-                        <div className="font-medium text-sm">{clause.clause_number}</div>
-                        <div className="text-xs text-slate-600 mt-1">{clause.title}</div>
+                        <div className="font-semibold text-sm text-slate-900">{clause.clause_number}</div>
+                        <div className="mt-1 text-xs leading-5 text-slate-600">{clause.title}</div>
                       </button>
                     ))}
                   </div>
@@ -453,7 +506,7 @@ const AuditPage = () => {
           </Card>
 
           {/* Document Upload Panel */}
-          <Card className="lg:col-span-2 shadow-md" data-testid="upload-panel">
+          <Card className="lg:col-span-2 rounded-[28px] border-white/70 bg-white/80 shadow-[0_22px_55px_rgba(43,67,58,0.10)]" data-testid="upload-panel">
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle>
@@ -463,7 +516,7 @@ const AuditPage = () => {
                   <Button
                     onClick={handleAnalyze}
                     disabled={analyzing || !selectedClause.knowledge_base}
-                    className="bg-blue-600 hover:bg-blue-700"
+                    className="rounded-[18px] bg-slate-950 hover:bg-slate-800"
                     data-testid="analyze-button"
                   >
                     {analyzing ? (
@@ -480,10 +533,10 @@ const AuditPage = () => {
                   </Button>
                 )}
                 {selectedClause && documents.length > 0 && user?.role !== 'auditor' && (
-                  <div className="p-3 bg-blue-50 border border-blue-200 rounded text-sm text-blue-800">
-                    ℹ️ Analisis AI hanya dapat dilakukan oleh Auditor
-                  </div>
-                )}
+                    <div className="rounded-[18px] border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+                      ℹ️ Analisis AI hanya dapat dilakukan oleh Auditor
+                    </div>
+                  )}
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -493,7 +546,7 @@ const AuditPage = () => {
 
                   {/* Knowledge Base Display for all users */}
                   {selectedClause.knowledge_base && (
-                    <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="mt-4 rounded-[22px] border border-sky-200 bg-sky-50/80 p-5">
                       <h4 className="font-semibold text-blue-900 mb-3 flex items-center gap-2">
                         <FileText className="w-4 h-4" />
                         Panduan Dokumen yang Diperlukan
@@ -521,7 +574,7 @@ const AuditPage = () => {
                               {dokumen && (
                                 <div className="mt-3">
                                   <p className="font-medium text-blue-800 mb-1">Dokumen/Evidence yang Harus Diupload:</p>
-                                  <div className="text-slate-700 whitespace-pre-line bg-white p-3 rounded border border-blue-100">
+                                  <div className="rounded-[18px] border border-blue-100 bg-white p-3 text-slate-700 whitespace-pre-line">
                                     {dokumen}
                                   </div>
                                 </div>
@@ -534,7 +587,7 @@ const AuditPage = () => {
                   )}
 
                   {!selectedClause.knowledge_base && (
-                    <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <div className="rounded-[22px] border border-yellow-200 bg-yellow-50 p-4">
                       <p className="text-sm text-yellow-800">
                         <strong>Perhatian:</strong> Knowledge base belum dikonfigurasi untuk klausul ini. 
                         Silakan tambahkan knowledge base di halaman Klausul sebelum melakukan audit AI.
@@ -543,7 +596,7 @@ const AuditPage = () => {
                   )}
 
                   {/* Upload Area */}
-                  <div className="border-2 border-dashed border-slate-300 rounded-lg p-8 text-center hover:border-emerald-500 transition-colors">
+                  <div className="rounded-[24px] border-2 border-dashed border-slate-300 p-8 text-center transition-colors hover:border-emerald-500">
                     <Upload className="w-12 h-12 mx-auto text-slate-400 mb-4" />
                     <p className="text-sm text-slate-600 mb-4">Upload dokumen evidence (PDF, Word, Excel, gambar)</p>
                     <input
@@ -559,7 +612,7 @@ const AuditPage = () => {
                         type="button"
                         disabled={loading}
                         onClick={() => document.getElementById('file-upload').click()}
-                        className="bg-emerald-600 hover:bg-emerald-700"
+                        className="rounded-[18px] bg-emerald-700 hover:bg-emerald-800"
                         data-testid="upload-button"
                       >
                         {loading ? 'Mengupload...' : 'Pilih File'}
@@ -585,7 +638,7 @@ const AuditPage = () => {
                       </div>
                       <div className="space-y-2">
                         {documents.map((doc) => (
-                          <div key={doc.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors" data-testid="document-item">
+                          <div key={doc.id} className="flex items-center justify-between rounded-[20px] bg-slate-50 p-3 transition-colors hover:bg-slate-100" data-testid="document-item">
                             <div className="flex items-center gap-3 flex-1">
                               <FileText className="w-5 h-5 text-blue-500 flex-shrink-0" />
                               <div className="flex-1 min-w-0">
@@ -637,11 +690,11 @@ const AuditPage = () => {
 
                   {/* Audit Result */}
                   {auditResult && (
-                    <Card className="border-2" data-testid="audit-result-card">
+                    <Card className="rounded-[24px] border-2 border-slate-100 shadow-none" data-testid="audit-result-card">
                       <CardHeader className="pb-3">
                         <div className="flex items-center justify-between">
                           <div>
-                            <CardTitle className="text-lg">Hasil Analisis AI (Tools Bantuan Auditor)</CardTitle>
+                            <CardTitle className="text-lg">Hasil Analisis AI</CardTitle>
                             <p className="text-xs text-slate-500 mt-1">Analisis kesesuaian dokumen yang diupload dengan dokumen yang diminta</p>
                           </div>
                           <Badge
@@ -698,9 +751,12 @@ const AuditPage = () => {
 
                   {/* Auditor Assessment Form */}
                   {auditResult && user?.role === 'auditor' && (
-                    <Card className="border-2 border-emerald-200" data-testid="auditor-assessment-card">
-                      <CardHeader className="pb-3 bg-emerald-50">
-                        <CardTitle className="text-lg text-emerald-900">Penilaian Auditor (Keputusan Akhir)</CardTitle>
+                    <Card className="rounded-[24px] border-2 border-emerald-200 shadow-none" data-testid="auditor-assessment-card">
+                      <CardHeader className="bg-emerald-50 pb-3">
+                        <CardTitle className="flex items-center gap-2 text-lg text-emerald-900">
+                          <ShieldCheck className="h-5 w-5" />
+                          Penilaian Auditor (Keputusan Akhir)
+                        </CardTitle>
                         <p className="text-xs text-emerald-700 mt-1">Form penilaian final auditor terhadap klausul ini</p>
                       </CardHeader>
                       <CardContent className="space-y-5 pt-5">
