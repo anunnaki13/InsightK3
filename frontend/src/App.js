@@ -12,6 +12,7 @@ import RecommendationsPage from './pages/RecommendationsPage';
 import ReportsPage from './pages/ReportsPage';
 import ERMRiskPage from './pages/ERMRiskPage';
 import ModuleLaunchPage from './pages/ModuleLaunchPage';
+import UnderwritingPage from './pages/UnderwritingPage';
 import '@/App.css';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -169,7 +170,7 @@ function App() {
             />
             <Route
               path="/underwriting-survey"
-              element={user ? <ModuleLaunchPage title="Underwriting Survey" badge="Module B" description="Persiapkan baseline survey underwriting untuk pengamatan kondisi plant, catatan risiko awal, dan integrasi ke register ERM." timeline="Setelah stabilisasi ERM Risk Register" highlights={['Form survey underwriting premium', 'Integrasi temuan ke risk register', 'Ringkasan temuan untuk reviewer dan management']} /> : <Navigate to="/auth" replace />}
+              element={user ? <UnderwritingPage /> : <Navigate to="/auth" replace />}
             />
             <Route
               path="/field-risk-survey"

@@ -13,7 +13,8 @@ from database import client, db
 from routers.erm_risk import router as erm_risk_router
 from routers.audit_smk3 import router as audit_smk3_router
 from routers.auth import router as auth_router
-from services.setup_service import create_indexes, seed_areas
+from routers.underwriting import router as underwriting_router
+from services.setup_service import create_indexes, seed_areas, seed_underwriting_templates
 
 logging.basicConfig(
     level=logging.INFO,
@@ -24,6 +25,7 @@ app = FastAPI(title="InsightK3 API")
 app.include_router(auth_router)
 app.include_router(audit_smk3_router)
 app.include_router(erm_risk_router)
+app.include_router(underwriting_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -37,6 +39,7 @@ app.add_middleware(
 @app.on_event("startup")
 async def startup_tasks():
     await seed_areas(db)
+    await seed_underwriting_templates(db)
     await create_indexes(db)
 
 
