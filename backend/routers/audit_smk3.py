@@ -3,6 +3,7 @@ import io
 import logging
 import os
 import subprocess
+import uuid
 import zipfile
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
@@ -36,6 +37,7 @@ from models.audit_models import (
 )
 from routers.auth import get_current_user
 from services.ai_service import analyze_document_evidence
+from services.risk_scoring import enrich_risk_item, generate_risk_code
 
 router = APIRouter(prefix="/api")
 
@@ -478,6 +480,41 @@ async def update_auditor_assessment(
     }
 
     await db.audit_results.update_one({"clause_id": clause_id}, {"$set": update_data})
+
+    if assessment.auditor_status in ("non-confirm-major", "non-confirm-minor"):
+        existing_risk = await db.risk_items.find_one(
+            {"related_clause_ids": clause_id, "status": {"$ne": "Archived"}},
+            {"_id": 0},
+        )
+        if not existing_risk:
+            clause = await db.clauses.find_one({"id": clause_id}, {"_id": 0})
+            sequence = await db.risk_items.count_documents({"area_code": "COMMON"}) + 1
+            draft_risk = {
+                "id": str(uuid.uuid4()),
+                "risk_code": generate_risk_code("COMMON", sequence),
+                "title": f"[Draft] Temuan Audit: {clause['clause_number']} {clause['title']}",
+                "description": (
+                    "Risk item otomatis dari hasil audit SMK3. "
+                    f"Status audit: {assessment.auditor_status}. "
+                    f"Catatan auditor: {assessment.auditor_notes}"
+                ),
+                "area_code": "COMMON",
+                "risk_category": "Lingkungan Kerja",
+                "likelihood": 3,
+                "impact": 4 if assessment.auditor_status == "non-confirm-major" else 3,
+                "residual_likelihood": 3,
+                "residual_impact": 3,
+                "status": "Active",
+                "related_clause_ids": [clause_id],
+                "related_survey_ids": [],
+                "related_equipment_ids": [],
+                "created_by": current_user.id,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+            draft_risk = enrich_risk_item(draft_risk)
+            await db.risk_items.insert_one(draft_risk)
+
     return {"message": "Auditor assessment saved successfully"}
 
 

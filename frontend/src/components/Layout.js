@@ -12,6 +12,7 @@ import {
   ListChecks,
   LogOut,
   Menu,
+  ShieldAlert,
   ShieldCheck,
   Sparkles,
 } from 'lucide-react';
@@ -27,12 +28,23 @@ const Layout = ({ children }) => {
     { name: 'Klausul', path: '/clauses', icon: FileCheck, hint: 'Knowledge base & mapping' },
     { name: 'Audit', path: '/audit', icon: ClipboardCheck, hint: 'Evidence & assessment' },
     { name: 'Rekomendasi', path: '/recommendations', icon: FileText, hint: 'Action tracking' },
-    { name: 'Laporan', path: '/reports', icon: FileText, hint: 'Output manajemen' }
-  ];
+    { name: 'Laporan', path: '/reports', icon: FileText, hint: 'Output manajemen' },
+    { name: 'ERM Risk', path: '/erm-risk', icon: ShieldAlert, hint: 'Risk register awal', roles: ['admin', 'auditor', 'risk_officer', 'management'] },
+  ].filter((item) => !item.roles || item.roles.includes(user?.role));
 
   const isActive = (path) => location.pathname === path;
   const activeItem = navigation.find((item) => isActive(item.path)) || navigation[0];
-  const roleLabel = user?.role === 'admin' ? 'Admin' : user?.role === 'auditor' ? 'Auditor' : 'Auditee';
+  const roleLabel = user?.role === 'admin'
+    ? 'Admin'
+    : user?.role === 'auditor'
+      ? 'Auditor'
+      : user?.role === 'risk_officer'
+        ? 'Risk Officer'
+        : user?.role === 'management'
+          ? 'Management'
+          : user?.role === 'surveyor'
+            ? 'Surveyor'
+            : 'Auditee';
 
   const NavContent = () => (
     <>

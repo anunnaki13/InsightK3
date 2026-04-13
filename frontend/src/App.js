@@ -10,6 +10,7 @@ import ClausesPage from './pages/ClausesPage';
 import AuditPage from './pages/AuditPage';
 import RecommendationsPage from './pages/RecommendationsPage';
 import ReportsPage from './pages/ReportsPage';
+import ERMRiskPage from './pages/ERMRiskPage';
 import '@/App.css';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -160,6 +161,10 @@ function App() {
             <Route
               path="/reports"
               element={user ? <ReportsPage /> : <Navigate to="/auth" replace />}
+            />
+            <Route
+              path="/erm-risk"
+              element={user ? <ERMRiskPage /> : <Navigate to="/auth" replace />}
             />
           </Routes>
           <Toaster position="top-right" richColors />

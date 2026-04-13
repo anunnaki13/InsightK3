@@ -9,6 +9,9 @@ class UserRole:
     ADMIN = "admin"
     AUDITOR = "auditor"
     AUDITEE = "auditee"
+    RISK_OFFICER = "risk_officer"
+    SURVEYOR = "surveyor"
+    MANAGEMENT = "management"
 
 
 class User(BaseModel):

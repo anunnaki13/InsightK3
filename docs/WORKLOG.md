@@ -17,3 +17,8 @@
 - Meningkatkan hierarki informasi, panel summary, CTA, dan presentasi status agar lebih layak untuk software operasional/manajerial.
 - Menyegarkan halaman `Auth`, `Criteria`, `Clauses`, dan `Recommendations` agar seluruh frontend sekarang memakai bahasa visual yang konsisten.
 - Menjaga seluruh perubahan tetap pada layer presentasi dan experience tanpa mengubah alur bisnis utama aplikasi.
+- Memulai fondasi Modul A ERM Risk Register: model backend, risk scoring, seed area, index startup, dan router API awal.
+- Menambahkan halaman dan route frontend `ERM Risk Register` sebagai entry point modul baru yang sudah tersambung ke backend.
+- Menambahkan auto-create draft risk item dari hasil audit dengan status non-confirm untuk integrasi awal audit ke ERM.
+- Memperkuat fondasi data ERM dengan index unik untuk `risk_items.id` dan `risk_items.risk_code`.
+- Memperluas halaman ERM menjadi workspace yang lebih operasional dengan filter, panel detail, dan histori aktivitas risk item.

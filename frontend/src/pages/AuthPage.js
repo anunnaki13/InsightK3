@@ -184,6 +184,9 @@ const AuthPage = () => {
                         <SelectContent>
                           <SelectItem value="admin" data-testid="role-admin">Admin</SelectItem>
                           <SelectItem value="auditor" data-testid="role-auditor">Auditor</SelectItem>
+                          <SelectItem value="risk_officer">Risk Officer</SelectItem>
+                          <SelectItem value="management">Management</SelectItem>
+                          <SelectItem value="surveyor">Surveyor</SelectItem>
                           <SelectItem value="auditee" data-testid="role-auditee">Auditee</SelectItem>
                         </SelectContent>
                       </Select>
