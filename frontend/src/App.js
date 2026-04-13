@@ -14,6 +14,7 @@ import ERMRiskPage from './pages/ERMRiskPage';
 import ModuleLaunchPage from './pages/ModuleLaunchPage';
 import UnderwritingPage from './pages/UnderwritingPage';
 import FieldSurveyPage from './pages/FieldSurveyPage';
+import EquipmentPage from './pages/EquipmentPage';
 import '@/App.css';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -179,7 +180,7 @@ function App() {
             />
             <Route
               path="/emergency-equipment"
-              element={user ? <ModuleLaunchPage title="Emergency Equipment Readiness" badge="Module D" description="Monitoring kesiapan alat tanggap darurat secara terstruktur untuk memetakan gap inspeksi, status kesiapan, dan prioritas perbaikan." timeline="Sesudah survey lapangan dasar berjalan" highlights={['Register alat dan status readiness', 'Indikator overdue inspeksi', 'Prioritas equipment kritikal']} /> : <Navigate to="/auth" replace />}
+              element={user ? <EquipmentPage /> : <Navigate to="/auth" replace />}
             />
             <Route
               path="/risk-heatmap"

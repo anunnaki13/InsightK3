@@ -27,3 +27,5 @@
 - Mengganti placeholder underwriting dengan workspace frontend yang dapat membuat survey, generate checklist, mengisi skor, dan melihat breakdown hasil underwriting.
 - Mengimplementasikan fondasi Modul C Field Survey pada backend: survey patrol, temuan lapangan, dashboard overdue, close workflow, dan auto-link severity tinggi ke ERM.
 - Mengganti placeholder field survey dengan workspace frontend untuk membuat survey, quick report finding, menutup temuan, dan memantau agregasi area.
+- Mengimplementasikan fondasi Modul D Emergency Equipment pada backend: model alat, inspeksi, readiness calculation, alert aktif, area summary, dan endpoint master equipment.
+- Mengganti placeholder equipment dengan workspace frontend untuk register alat, inspeksi, monitoring alert, serta pemantauan overdue dan expiring equipment.
