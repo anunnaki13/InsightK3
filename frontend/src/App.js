@@ -11,10 +11,10 @@ import AuditPage from './pages/AuditPage';
 import RecommendationsPage from './pages/RecommendationsPage';
 import ReportsPage from './pages/ReportsPage';
 import ERMRiskPage from './pages/ERMRiskPage';
-import ModuleLaunchPage from './pages/ModuleLaunchPage';
 import UnderwritingPage from './pages/UnderwritingPage';
 import FieldSurveyPage from './pages/FieldSurveyPage';
 import EquipmentPage from './pages/EquipmentPage';
+import HeatmapPage from './pages/HeatmapPage';
 import '@/App.css';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -184,7 +184,7 @@ function App() {
             />
             <Route
               path="/risk-heatmap"
-              element={user ? <ModuleLaunchPage title="Risk Heatmap & Consolidated Dashboard" badge="Module E" description="Executive view untuk memusatkan heatmap risiko, tren mitigasi, dan konsolidasi lintas modul dalam satu tampilan manajerial." timeline="Setelah modul-modul operasional memiliki data cukup" highlights={['Heatmap enterprise', 'Dashboard konsolidasi lintas area', 'Ringkasan risiko prioritas untuk management']} /> : <Navigate to="/auth" replace />}
+              element={user ? <HeatmapPage /> : <Navigate to="/auth" replace />}
             />
           </Routes>
           <Toaster position="top-right" richColors />

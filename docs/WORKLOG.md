@@ -29,3 +29,8 @@
 - Mengganti placeholder field survey dengan workspace frontend untuk membuat survey, quick report finding, menutup temuan, dan memantau agregasi area.
 - Mengimplementasikan fondasi Modul D Emergency Equipment pada backend: model alat, inspeksi, readiness calculation, alert aktif, area summary, dan endpoint master equipment.
 - Mengganti placeholder equipment dengan workspace frontend untuk register alat, inspeksi, monitoring alert, serta pemantauan overdue dan expiring equipment.
+
+## 2026-04-14
+- Menambahkan dokumentasi checkpoint resume dan progress summary agar sesi berikutnya bisa langsung lanjut tanpa kehilangan konteks.
+- Mengimplementasikan fondasi Modul E Heatmap & Consolidated Dashboard pada backend: area summary lintas modul, KPI unit, trend, risk matrix, top risks, critical alerts, dan action items.
+- Mengganti placeholder heatmap dengan dashboard frontend konsolidasi yang membaca data dari modul audit, ERM, underwriting, field survey, dan equipment.
