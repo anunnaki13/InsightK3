@@ -37,3 +37,11 @@
 - Menyiapkan deployment VPS awal: memasang MongoDB lokal, membuat env lokal, menginstal dependency runtime backend/frontend, build frontend production, dan mendaftarkan service `systemd` untuk backend/frontend.
 - Menetapkan port deploy aktif: frontend `3002`, backend `8001`, karena `3000` dan `3001` sudah dipakai aplikasi lain di VPS.
 - Membuat user admin awal untuk akses pertama dan mendokumentasikan status deployment aktual di `docs/VPS_DEPLOYMENT_2026-04-14.md`.
+- Membenahi alur seed audit penuh agar endpoint seed sekarang mengarah ke dataset `12 criteria + 166 clauses`, bukan lagi dataset baseline parsial.
+- Menghapus seluruh jejak branding dan badge lama dari baseline scaffold di source frontend dan output build production.
+- Mengimplementasikan attachment upload/download/delete untuk Underwriting Survey dan Field Survey, lalu menyambungkannya ke UI workspace masing-masing.
+- Memperluas dukungan dokumen audit agar menerima format file standar operasional yang lebih luas: PDF, Office, gambar, CSV/TXT, dan format OpenDocument.
+- Memperbaiki fungsi lihat dokumen audit dengan inferensi MIME yang lebih baik dan fallback preview yang lebih stabil.
+- Memasang LibreOffice headless pada VPS dan mengaktifkan preview Office-to-PDF di backend agar file Word/Excel/PowerPoint dapat dilihat konsisten dari aplikasi.
+- Mengimplementasikan report PDF untuk Underwriting Survey dan Field Survey, lalu menambahkan tombol download report pada UI kedua modul.
+- Melakukan deploy ulang service backend/frontend setelah perubahan preview dokumen dan report generation agar update terbaru langsung aktif di preview VPS.

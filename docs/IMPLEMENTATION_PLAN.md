@@ -4,7 +4,7 @@
 - Repository ini adalah baseline hasil migrasi dari `SMk3` ke repo kerja baru `InsightK3`.
 - Blueprint utama tetap di `INSIGHT_K3_BLUEPRINT_v2.md`.
 - Fokus awal adalah menjaga baseline existing tetap berjalan sambil memindahkan fondasi ke arsitektur v2 secara bertahap.
-- Status saat ini: fondasi backend modular sudah aktif, UI shell premium sudah aktif, dan Modul A-D sudah memiliki implementasi awal end-to-end.
+- Status saat ini: fondasi backend modular sudah aktif, UI shell premium sudah aktif, modul A-E sudah aktif, attachment workflow modul baru sudah aktif, dan report PDF untuk Underwriting/Field Survey sudah aktif.
 
 ## Delivery Principles
 - Kerja dilakukan bertahap, per fase, dengan perubahan yang kecil tapi lengkap.
@@ -26,17 +26,21 @@
 5. Modul B `Underwriting Survey` completed as first-pass operational workspace.
 6. Modul C `Field Survey` completed as first-pass operational workspace.
 7. Modul D `Emergency Equipment Readiness` completed as first-pass operational workspace.
+8. Modul E `Risk Heatmap & Consolidated Dashboard` completed as first-pass consolidated workspace.
+9. File/photo attachment handling completed for Underwriting and Field Survey.
+10. Audit document preview upgraded with Office-to-PDF conversion for operational review use.
+11. Report generation completed for Underwriting Survey and Field Survey.
 
 ## Active Gaps
-1. Frontend production build has not been executed in this shell because frontend dependencies/tooling are not installed.
-2. APScheduler-based daily alert cron for equipment has not been enabled yet.
-3. Report generation and file/photo uploads remain placeholder endpoints in new modules.
-4. Modul E `Risk Heatmap & Consolidated Dashboard` has not been implemented yet.
+1. APScheduler-based daily alert cron for equipment has not been enabled yet.
+2. Seed `166` klausul perlu divalidasi secara operasional pada database aktif.
+3. Report generation belum merata ke semua modul baru.
+4. Underwriting Survey dan Emergency Equipment Readiness belum disesuaikan dengan template Excel baku operasional pengguna.
 
 ## Next Recommended Sequence
-1. Implement Modul E `Risk Heatmap & Consolidated Dashboard` from aggregated module data.
-2. Add missing production capabilities: uploads, report generation, and recurring alert scheduler.
-3. Run full frontend install/build verification once the toolchain is available.
+1. Activate recurring equipment alert scheduler.
+2. Validate and, if needed, execute the corrected `166`-clause audit seed flow on the active dataset.
+3. Move into template-driven upgrade for Underwriting Survey and Emergency Equipment Readiness based on the user's existing Excel forms.
 
 ## Immediate Deliverables
 1. `backend/services/ai_service.py` sebagai service AI terpusat.

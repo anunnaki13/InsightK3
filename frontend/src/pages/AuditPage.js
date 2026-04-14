@@ -20,6 +20,9 @@ import { id as idLocale } from 'date-fns/locale';
 import { Upload, FileText, Trash2, Play, CheckCircle, XCircle, Loader2, Eye, Download, Archive, RefreshCw, Calendar as CalendarIcon, Save, ShieldCheck, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 
+const INLINE_PREVIEW_EXTENSIONS = ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'txt', 'csv'];
+const EXTENDED_ACCEPT_TYPES = '.pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.jpg,.jpeg,.png,.gif,.bmp,.webp,.txt,.rtf,.odt,.ods,.odp';
+
 const AuditPage = () => {
   const { API, user } = useContext(AppContext);
   const [criteria, setCriteria] = useState([]);
@@ -67,6 +70,12 @@ const AuditPage = () => {
       });
     }
   }, [auditResult]);
+
+  useEffect(() => () => {
+    if (previewDoc?.previewUrl) {
+      window.URL.revokeObjectURL(previewDoc.previewUrl);
+    }
+  }, [previewDoc]);
 
   const fetchCriteria = async () => {
     try {
@@ -156,11 +165,27 @@ const AuditPage = () => {
         responseType: 'blob'
       });
       
-      // Create blob with proper MIME type
-      const blob = new Blob([response.data], { type: doc.mime_type || 'application/pdf' });
+      const previewMimeType = response.headers['content-type'] || getDocumentMimeType(doc);
+      const previewDocMeta = { ...doc, mime_type: previewMimeType };
+      const blob = new Blob([response.data], { type: previewMimeType });
       const url = window.URL.createObjectURL(blob);
-      setPreviewDoc({ ...doc, previewUrl: url });
-      setShowPreview(true);
+      const previewMode = getPreviewMode(previewDocMeta);
+
+      if (previewMode === 'inline') {
+        setPreviewDoc({ ...previewDocMeta, previewUrl: url, previewMode });
+        setShowPreview(true);
+        return;
+      }
+
+      const previewWindow = window.open(url, '_blank', 'noopener,noreferrer');
+      if (!previewWindow) {
+        setPreviewDoc({ ...previewDocMeta, previewUrl: url, previewMode: 'download' });
+        setShowPreview(true);
+        toast.info('Browser memblokir tab preview. Gunakan tombol download.');
+        return;
+      }
+
+      setTimeout(() => window.URL.revokeObjectURL(url), 60000);
     } catch (error) {
       toast.error('Gagal membuka preview dokumen');
       console.error('Preview error:', error);
@@ -193,9 +218,41 @@ const AuditPage = () => {
     window.open(downloadUrl, '_blank');
   };
 
-  const isPdfOrImage = (filename) => {
-    const ext = filename.split('.').pop().toLowerCase();
-    return ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'].includes(ext);
+  const getDocumentExtension = (filename = '') => filename.split('.').pop()?.toLowerCase() || '';
+
+  const getDocumentMimeType = (doc) => {
+    if (doc?.mime_type && doc.mime_type !== 'application/octet-stream') {
+      return doc.mime_type;
+    }
+
+    const extension = getDocumentExtension(doc?.filename);
+    const mimeByExtension = {
+      pdf: 'application/pdf',
+      doc: 'application/msword',
+      docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      xls: 'application/vnd.ms-excel',
+      xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      csv: 'text/csv',
+      ppt: 'application/vnd.ms-powerpoint',
+      pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      txt: 'text/plain',
+      rtf: 'application/rtf',
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      png: 'image/png',
+      gif: 'image/gif',
+      bmp: 'image/bmp',
+      webp: 'image/webp',
+    };
+    return mimeByExtension[extension] || 'application/octet-stream';
+  };
+
+  const getPreviewMode = (doc) => {
+    const mimeType = getDocumentMimeType(doc);
+    const extension = getDocumentExtension(doc?.filename);
+    return mimeType.includes('pdf') || mimeType.includes('image') || INLINE_PREVIEW_EXTENSIONS.includes(extension)
+      ? 'inline'
+      : 'external';
   };
 
   const handleHardReset = async () => {
@@ -293,14 +350,14 @@ const AuditPage = () => {
           <div className="flex-1 overflow-auto bg-slate-50">
             {previewDoc && (
               <div className="w-full h-full">
-                {previewDoc.mime_type?.includes('pdf') || previewDoc.filename.toLowerCase().endsWith('.pdf') ? (
+                {previewDoc.previewMode === 'inline' && (getDocumentMimeType(previewDoc).includes('pdf') || previewDoc.filename.toLowerCase().endsWith('.pdf')) ? (
                   <iframe
                     src={`${previewDoc.previewUrl}#view=FitH`}
                     className="w-full h-full border-0"
                     style={{ minHeight: '600px' }}
                     title="PDF Preview"
                   />
-                ) : previewDoc.mime_type?.includes('image') || /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(previewDoc.filename) ? (
+                ) : previewDoc.previewMode === 'inline' && getDocumentMimeType(previewDoc).includes('image') ? (
                   <div className="flex items-center justify-center h-full p-4">
                     <img
                       src={previewDoc.previewUrl}
@@ -308,11 +365,18 @@ const AuditPage = () => {
                       className="max-w-full max-h-full object-contain"
                     />
                   </div>
+                ) : previewDoc.previewMode === 'inline' ? (
+                  <iframe
+                    src={previewDoc.previewUrl}
+                    className="w-full h-full border-0 bg-white"
+                    style={{ minHeight: '600px' }}
+                    title="Document Preview"
+                  />
                 ) : (
                   <div className="flex items-center justify-center h-full">
                     <div className="text-center p-8">
                       <FileText className="w-16 h-16 mx-auto text-slate-400 mb-4" />
-                      <p className="text-slate-600 mb-2">Preview tidak tersedia untuk tipe file ini</p>
+                      <p className="text-slate-600 mb-2">Preview inline tidak tersedia untuk tipe file ini</p>
                       <p className="text-sm text-slate-500 mb-4">{previewDoc.filename}</p>
                       <Button
                         onClick={() => handleDownloadDocument(previewDoc.id, previewDoc.filename)}
@@ -598,13 +662,13 @@ const AuditPage = () => {
                   {/* Upload Area */}
                   <div className="rounded-[24px] border-2 border-dashed border-slate-300 p-8 text-center transition-colors hover:border-emerald-500">
                     <Upload className="w-12 h-12 mx-auto text-slate-400 mb-4" />
-                    <p className="text-sm text-slate-600 mb-4">Upload dokumen evidence (PDF, Word, Excel, gambar)</p>
+                    <p className="text-sm text-slate-600 mb-4">Upload dokumen evidence: PDF, hasil scan PDF, Word, Excel, PowerPoint, gambar, dan dokumen standar lain</p>
                     <input
                       type="file"
                       id="file-upload"
                       className="hidden"
                       onChange={handleFileUpload}
-                      accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
+                      accept={EXTENDED_ACCEPT_TYPES}
                       data-testid="file-upload-input"
                     />
                     <label htmlFor="file-upload">
@@ -649,18 +713,16 @@ const AuditPage = () => {
                               </div>
                             </div>
                             <div className="flex items-center gap-1 ml-2">
-                              {isPdfOrImage(doc.filename) && (
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => handlePreviewDocument(doc)}
-                                  className="h-8 w-8 text-blue-500 hover:text-blue-700 hover:bg-blue-50"
-                                  data-testid="preview-document-button"
-                                  title="Preview"
-                                >
-                                  <Eye className="w-4 h-4" />
-                                </Button>
-                              )}
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handlePreviewDocument(doc)}
+                                className="h-8 w-8 text-blue-500 hover:text-blue-700 hover:bg-blue-50"
+                                data-testid="preview-document-button"
+                                title="Lihat dokumen"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </Button>
                               <Button
                                 variant="ghost"
                                 size="icon"

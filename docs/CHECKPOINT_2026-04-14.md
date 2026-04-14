@@ -10,10 +10,10 @@ Dokumen ini adalah checkpoint resume singkat agar sesi berikutnya bisa langsung 
 - Status deploy VPS juga sudah ada dan didokumentasikan di `docs/VPS_DEPLOYMENT_2026-04-14.md`.
 
 ## Latest Completed Commits
-- `a5eb133` Build emergency equipment readiness module foundation
-- `cacbd1b` Build field survey workflow and ERM linkage
-- `694a94e` Build underwriting survey foundation across backend and frontend
-- `a5eb133` adalah checkpoint kerja terbaru saat dokumen ini dibuat.
+- `e854eb1` Clean legacy branding and add survey attachments
+- `c27512f` Add VPS deployment setup and runtime dependencies
+- `b7661e8` Build integrated heatmap and consolidated dashboard foundation
+- `e854eb1` adalah commit kerja terbaru yang sudah dipush saat checkpoint ini diperbarui.
 
 ## Completed Modules
 ### Core Platform
@@ -27,33 +27,37 @@ Dokumen ini adalah checkpoint resume singkat agar sesi berikutnya bisa langsung 
 - Temuan audit non-confirm dapat membuat draft risk item otomatis.
 
 ### Modul B — Underwriting Survey
-- Survey header, checklist template, generate checklist, scoring weighted, dan submit flow awal sudah aktif.
+- Survey header, checklist template, generate checklist, scoring weighted, submit flow, attachment upload, dan report PDF awal sudah aktif.
 - Temuan underwriting kritikal dapat membuat draft risk item ke ERM.
 
 ### Modul C — Field Survey
-- Survey patrol, quick finding, overdue view, close workflow, dan dashboard area sudah aktif.
+- Survey patrol, quick finding, overdue view, close workflow, dashboard area, attachment upload, dan report PDF awal sudah aktif.
 - Finding `high`/`critical` bisa otomatis membuat draft risk item ke ERM.
 
 ### Modul D — Emergency Equipment Readiness
 - Register equipment, inspeksi, readiness calculation, alert aktif, area summary, overdue inspection, dan expiring items sudah aktif.
 - Manual alert check endpoint juga sudah tersedia.
 
+### Cross-Cutting Capability
+- Preview dokumen audit untuk PDF dan gambar sudah aktif.
+- Preview dokumen Office sekarang dikonversi ke PDF via LibreOffice headless agar bisa dilihat konsisten dari aplikasi.
+- Branding lama dari scaffold frontend sudah dibersihkan dari build dan source.
+
 ## Not Yet Completed
-- Upload file/photo pada modul-modul baru
-- Report/PDF generation pada modul-modul baru
 - Scheduler harian untuk alert equipment
-- Penyempurnaan data seed audit penuh karena populate saat ini baru menghasilkan `105` klausul
-- Hardening production lanjutan: reverse proxy, SSL, dan firewall policy
+- Validasi operasional seed audit penuh `166` klausul pada database aktif
+- Report/PDF generation untuk modul equipment dan dashboard konsolidasi
+- Penyesuaian field Underwriting Survey dan Emergency Equipment Readiness berdasarkan template Excel baku operasional
+- Hardening production lanjutan hanya bila aplikasi nantinya dipindahkan dari mode preview ke mode publik permanen
 
 ## Immediate Next Step
-Lanjut ke production hardening:
-- upload/file handling
-- report generation
+Lanjut ke penyelesaian gap inti yang tersisa:
 - scheduler harian equipment alert
-- audit data seed
-- reverse proxy dan SSL
+- validasi seed audit `166` klausul pada data aktif
+- report lanjutan untuk modul lain bila diperlukan
+- setelah itu baru masuk ke fase upgrade template-driven
 
 ## Notes For Resume
-- Jika sesi berikutnya dimulai, lanjut langsung dari implementasi Modul E.
+- Jika sesi berikutnya dimulai, jangan ulang fondasi modul; lanjut dari gap yang belum selesai atau fase upgrade template-driven.
 - Gunakan `docs/WORKLOG.md` untuk histori naratif lengkap.
 - Gunakan `docs/IMPLEMENTATION_PLAN.md` untuk status fase dan urutan kerja.

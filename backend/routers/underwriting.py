@@ -1,8 +1,15 @@
+import base64
+import io
 import uuid
 from datetime import datetime, timezone
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import inch
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from database import db, fs
 from models.audit_models import User, UserRole
@@ -30,6 +37,8 @@ UNDERWRITING_READ_ROLES = {
     UserRole.SURVEYOR,
     UserRole.MANAGEMENT,
 }
+
+UNDERWRITING_CATEGORY_MAP = {item["code"]: item for item in UNDERWRITING_CATEGORIES}
 
 
 def _ensure_can_read(user: User) -> None:
@@ -96,6 +105,133 @@ async def _sync_survey_score(survey_id: str) -> dict:
         },
     )
     return score
+
+
+def _build_underwriting_report_pdf(survey: dict, checklist_items: list[dict], score: dict, attachments: dict[str, int]) -> dict:
+    buffer = io.BytesIO()
+    document = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        leftMargin=0.55 * inch,
+        rightMargin=0.55 * inch,
+        topMargin=0.55 * inch,
+        bottomMargin=0.55 * inch,
+    )
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle("uw-title", parent=styles["Title"], fontSize=18, leading=22, textColor=colors.HexColor("#16324f"))
+    section_style = ParagraphStyle("uw-section", parent=styles["Heading2"], fontSize=12, leading=15, textColor=colors.HexColor("#22577a"), spaceAfter=8)
+    body_style = ParagraphStyle("uw-body", parent=styles["BodyText"], fontSize=9, leading=12)
+    small_style = ParagraphStyle("uw-small", parent=styles["BodyText"], fontSize=8, leading=10, textColor=colors.HexColor("#556270"))
+
+    story = [
+        Paragraph("Underwriting Survey Report", title_style),
+        Spacer(1, 0.15 * inch),
+        Paragraph(f"Survey Code: <b>{survey.get('survey_code', '-')}</b>", body_style),
+        Paragraph(f"Title: <b>{survey.get('title', '-')}</b>", body_style),
+        Paragraph(
+            f"Insurance Company: <b>{survey.get('insurance_company') or '-'}</b> | "
+            f"Policy: <b>{survey.get('policy_number') or '-'}</b>",
+            body_style,
+        ),
+        Paragraph(
+            f"Area: <b>{survey.get('area_code') or '-'}</b> | "
+            f"Status: <b>{survey.get('status') or '-'}</b> | "
+            f"Planned Date: <b>{survey.get('planned_date') or '-'}</b>",
+            body_style,
+        ),
+        Spacer(1, 0.18 * inch),
+        Paragraph("Executive Summary", section_style),
+    ]
+
+    summary_rows = [
+        ["Overall Score", str(score.get("overall_score", survey.get("overall_score") or 0))],
+        ["Risk Grade", str(score.get("risk_grade", survey.get("risk_grade") or "-"))],
+        ["Checklist Items", str(len(checklist_items))],
+        ["Critical Findings", str(score.get("total_critical_findings", 0))],
+    ]
+    summary_table = Table(summary_rows, colWidths=[2.0 * inch, 4.8 * inch])
+    summary_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f4f8fb")),
+                ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#c8d6e5")),
+                ("INNERGRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#dfe6ee")),
+                ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 9),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("PADDING", (0, 0), (-1, -1), 6),
+            ]
+        )
+    )
+    story.extend([summary_table, Spacer(1, 0.18 * inch), Paragraph("Category Breakdown", section_style)])
+
+    category_rows = [["Category", "Assessed", "Weighted Score", "Raw Score"]]
+    for category in UNDERWRITING_CATEGORIES:
+        category_score = score.get("category_scores", {}).get(category["code"], {})
+        category_rows.append(
+            [
+                f'{category["code"]} - {category["name"]}',
+                f'{category_score.get("items_assessed", 0)}/{category_score.get("total_items", 0)}',
+                str(category_score.get("weighted_score", 0)),
+                str(category_score.get("raw_score", 0)),
+            ]
+        )
+    category_table = Table(category_rows, colWidths=[3.2 * inch, 1.0 * inch, 1.1 * inch, 1.0 * inch])
+    category_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#22577a")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#d0dae5")),
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("PADDING", (0, 0), (-1, -1), 5),
+            ]
+        )
+    )
+    story.extend([category_table, Spacer(1, 0.18 * inch), Paragraph("Checklist Detail", section_style)])
+
+    detail_rows = [["Item", "Category", "Score", "Critical", "Attachments", "Finding / Recommendation"]]
+    for item in checklist_items:
+        detail_rows.append(
+            [
+                item.get("item_code", "-"),
+                item.get("category_code", "-"),
+                str(item.get("score") if item.get("score") is not None else "-"),
+                "Yes" if item.get("is_critical") else "No",
+                str(attachments.get(item["id"], 0)),
+                Paragraph(
+                    (
+                        f"<b>Finding:</b> {item.get('finding') or '-'}<br/>"
+                        f"<b>Recommendation:</b> {item.get('recommendation') or '-'}"
+                    ),
+                    small_style,
+                ),
+            ]
+        )
+    detail_table = Table(detail_rows, colWidths=[0.8 * inch, 0.8 * inch, 0.5 * inch, 0.6 * inch, 0.7 * inch, 3.4 * inch], repeatRows=1)
+    detail_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#16324f")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#d0dae5")),
+                ("FONTSIZE", (0, 0), (-1, -1), 7),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("PADDING", (0, 0), (-1, -1), 4),
+            ]
+        )
+    )
+    story.append(detail_table)
+
+    document.build(story)
+    return {
+        "filename": f'Underwriting_Report_{survey.get("survey_code", "survey")}.pdf',
+        "content": base64.b64encode(buffer.getvalue()).decode("utf-8"),
+        "content_type": "application/pdf",
+    }
 
 
 async def _create_risk_from_critical_underwriting_item(survey: dict, item: dict, current_user: User) -> None:
@@ -451,5 +587,14 @@ async def submit_underwriting_survey(survey_id: str, current_user: User = Depend
 @router.post("/underwriting/surveys/{survey_id}/report")
 async def generate_underwriting_report(survey_id: str, current_user: User = Depends(get_current_user)):
     _ensure_can_read(current_user)
-    await _get_survey_or_404(survey_id)
-    raise HTTPException(status_code=501, detail="Report generation is planned but not implemented yet")
+    survey = await _get_survey_or_404(survey_id)
+    checklist_items = await db.underwriting_survey_items.find({"survey_id": survey_id}, {"_id": 0}).sort("item_code", 1).to_list(500)
+    score = await _sync_survey_score(survey_id)
+    attachment_items = await db.survey_attachments.find(
+        {"parent_type": "underwriting_checklist_item", "parent_id": {"$in": [item["id"] for item in checklist_items]}},
+        {"_id": 0, "parent_id": 1},
+    ).to_list(1000)
+    attachment_counts: dict[str, int] = {}
+    for item in attachment_items:
+        attachment_counts[item["parent_id"]] = attachment_counts.get(item["parent_id"], 0) + 1
+    return _build_underwriting_report_pdf(survey, checklist_items, score, attachment_counts)

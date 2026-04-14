@@ -6,12 +6,21 @@ InsightK3 adalah workspace audit dan risk intelligence untuk SMK3 yang dikembang
 - Migrasi AI existing ke OpenRouter sudah dilakukan.
 - Backend monolitik sudah dipecah ke `routers/`, `models/`, `services/`, dan `database.py`.
 - UI shell utama sudah dimodernisasi ke arah profesional, clean, modern, dan premium.
-- Modul A sampai E sudah memiliki fondasi implementasi awal:
+- Modul A sampai E sudah memiliki implementasi operasional awal:
   - ERM Risk Register
   - Underwriting Survey
   - Field Survey
   - Emergency Equipment Readiness
   - Risk Heatmap & Consolidated Dashboard
+- Upload attachment untuk Underwriting Survey dan Field Survey sudah aktif.
+- Preview dokumen audit sekarang mendukung PDF, gambar, dan konversi Office ke PDF untuk kebutuhan lihat dokumen.
+- Report PDF untuk Audit SMK3, Underwriting Survey, dan Field Survey sudah aktif.
+- Branding lama yang berasal dari baseline scaffold sudah dibersihkan dari frontend preview.
+
+## Current Focus
+- Scheduler harian untuk alert equipment belum diaktifkan.
+- Seed audit penuh `166` klausul sudah dibenahi di level kode, tetapi validasi/eksekusi seed final pada data operasional tetap perlu dilakukan secara terkontrol.
+- Template-driven upgrade untuk Underwriting Survey dan Emergency Equipment Readiness akan dikerjakan pada fase berikutnya berdasarkan file Excel baku operasional yang sudah ada.
 
 ## Tech Stack
 
@@ -73,4 +82,5 @@ npm run build
 ## Notes
 - File `.env` production/lokal tidak disimpan ke Git.
 - Fitur AI membutuhkan `OPENROUTER_API_KEY` aktif di `backend/.env`.
+- Preview dokumen Office di backend memakai LibreOffice headless pada VPS/runtime yang mendukung.
 - Untuk deployment VPS yang sudah berjalan saat ini, lihat dokumen deployment di folder `docs/`.

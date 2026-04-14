@@ -23,6 +23,7 @@ InsightK3 sudah berhasil dijalankan di VPS ini dengan service `systemd` terpisah
 ### Backend
 - Python virtualenv: `/root/K3codex/InsightK3/.venv`
 - Runtime dependency file: `backend/requirements-prod.txt`
+- Additional runtime tool for Office preview: LibreOffice headless
 - Start command:
   ```bash
   /root/K3codex/InsightK3/.venv/bin/uvicorn server:app --host 0.0.0.0 --port 8001
@@ -48,10 +49,11 @@ InsightK3 sudah berhasil dijalankan di VPS ini dengan service `systemd` terpisah
 ## Important Follow-up
 1. Ganti password admin awal segera setelah login pertama.
 2. Isi `OPENROUTER_API_KEY` pada `backend/.env` agar fitur AI aktif.
-3. Tambahkan reverse proxy/domain/SSL bila aplikasi akan dipakai publik secara permanen.
-4. Pertimbangkan hardening tambahan: firewall, auth MongoDB, dan Nginx.
+3. Untuk mode preview saat ini, reverse proxy/domain/SSL tidak wajib; tambahkan hanya jika aplikasi akan dipakai publik secara permanen.
+4. Pertimbangkan hardening tambahan: firewall, auth MongoDB, dan Nginx bila mode penggunaan berubah dari preview ke public production.
 
 ## Known Deployment Notes
 1. Frontend production build berhasil setelah menambahkan `ajv`, `ajv-keywords`, dan `serve`.
 2. Dependency backend default terlalu berat untuk Python 3.10 VPS ini, sehingga dibuat file runtime khusus `backend/requirements-prod.txt`.
-3. Baseline database audit sudah dipopulasi, tetapi script `populate_all_166_clauses.py` saat ini menghasilkan `105` klausul, bukan `166`, sehingga ini masih perlu audit data terpisah.
+3. Preview dokumen Office sekarang bergantung pada LibreOffice headless yang sudah dipasang di VPS untuk konversi ke PDF.
+4. Alur seed audit penuh sudah dibenahi di level kode, tetapi validasi penerapan `166` klausul pada data aktif masih perlu dilakukan secara terkontrol.

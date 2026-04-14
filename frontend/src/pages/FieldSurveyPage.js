@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { AlertTriangle, ClipboardList, Download, ImagePlus, Plus, RefreshCcw, ShieldAlert, Siren, Sparkles, Trash2 } from 'lucide-react';
+import { AlertTriangle, ClipboardList, Download, FileText, ImagePlus, Plus, RefreshCcw, ShieldAlert, Siren, Sparkles, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 const emptySurveyForm = {
@@ -64,6 +64,7 @@ const FieldSurveyPage = () => {
   const [photoMap, setPhotoMap] = useState({});
   const [uploadingFindingId, setUploadingFindingId] = useState(null);
   const [deletingPhotoId, setDeletingPhotoId] = useState(null);
+  const [generatingReport, setGeneratingReport] = useState(false);
 
   const canWrite = ['admin', 'risk_officer', 'surveyor'].includes(user?.role);
 
@@ -273,6 +274,29 @@ const FieldSurveyPage = () => {
       toast.error(error.response?.data?.detail || 'Gagal menghapus foto finding');
     } finally {
       setDeletingPhotoId(null);
+    }
+  };
+
+  const handleGenerateSurveyReport = async () => {
+    if (!selectedSurveyId) return;
+    setGeneratingReport(true);
+    try {
+      const response = await axios.post(`${API}/field-survey/surveys/${selectedSurveyId}/report`);
+      const { filename, content } = response.data;
+      const blob = new Blob([Uint8Array.from(atob(content), (char) => char.charCodeAt(0))], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success('Report field survey berhasil diunduh');
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Gagal membuat report field survey');
+    } finally {
+      setGeneratingReport(false);
     }
   };
 
@@ -542,6 +566,12 @@ const FieldSurveyPage = () => {
                         <p className="mt-2 font-semibold text-slate-950">{surveyFindings.length}</p>
                       </div>
                     </div>
+                    {surveyFindings.length > 0 && (
+                      <Button variant="outline" onClick={handleGenerateSurveyReport} className="rounded-[16px]">
+                        <FileText className="mr-2 h-4 w-4" />
+                        {generatingReport ? 'Generating...' : 'Download Report'}
+                      </Button>
+                    )}
                     {canWrite && selectedSurvey.status !== 'closed' && (
                       <Button variant="outline" onClick={handleCloseSurvey} className="rounded-[16px]">
                         <ShieldAlert className="mr-2 h-4 w-4" />

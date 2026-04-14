@@ -1,12 +1,15 @@
 import base64
 import io
 import logging
+import mimetypes
 import os
 import subprocess
+import tempfile
 import uuid
 import zipfile
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
+from pathlib import Path
 from typing import List, Optional
 
 from bson.objectid import ObjectId
@@ -48,6 +51,74 @@ def _parse_datetime_fields(items: list[dict], *fields: str) -> list[dict]:
             if isinstance(item.get(field), str):
                 item[field] = datetime.fromisoformat(item[field])
     return items
+
+
+def _resolve_mime_type(filename: str | None, mime_type: str | None) -> str:
+    if mime_type and mime_type != "application/octet-stream":
+        return mime_type
+
+    guessed_type, _ = mimetypes.guess_type(filename or "")
+    if guessed_type:
+        return guessed_type
+
+    return mime_type or "application/octet-stream"
+
+
+def _get_extension(filename: str | None) -> str:
+    return Path(filename or "").suffix.lower()
+
+
+def _is_office_document(filename: str | None, mime_type: str | None) -> bool:
+    extension = _get_extension(filename)
+    if extension in {".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".rtf", ".odt", ".ods", ".odp"}:
+        return True
+
+    resolved = _resolve_mime_type(filename, mime_type)
+    return resolved in {
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.ms-excel",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.ms-powerpoint",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "application/rtf",
+        "application/vnd.oasis.opendocument.text",
+        "application/vnd.oasis.opendocument.spreadsheet",
+        "application/vnd.oasis.opendocument.presentation",
+    }
+
+
+def _convert_office_to_pdf(content: bytes, filename: str) -> bytes:
+    extension = _get_extension(filename) or ".bin"
+
+    with tempfile.TemporaryDirectory(prefix="insightk3-office-preview-") as workdir:
+        input_path = Path(workdir) / f"source{extension}"
+        output_dir = Path(workdir) / "out"
+        profile_dir = Path(workdir) / "profile"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        profile_dir.mkdir(parents=True, exist_ok=True)
+        input_path.write_bytes(content)
+
+        profile_uri = profile_dir.resolve().as_uri()
+        command = [
+            "libreoffice",
+            "--headless",
+            f"-env:UserInstallation={profile_uri}",
+            "--convert-to",
+            "pdf",
+            "--outdir",
+            str(output_dir),
+            str(input_path),
+        ]
+        result = subprocess.run(command, capture_output=True, text=True, timeout=120)
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr.strip() or result.stdout.strip() or "LibreOffice conversion failed")
+
+        pdf_path = output_dir / f"{input_path.stem}.pdf"
+        if not pdf_path.exists():
+            raise RuntimeError("Converted PDF was not produced")
+
+        return pdf_path.read_bytes()
 
 
 @router.get("/criteria", response_model=List[AuditCriteria])
@@ -138,13 +209,14 @@ async def upload_document(
         raise HTTPException(status_code=404, detail="Clause not found")
 
     content = await file.read()
-    file_id = fs.put(content, filename=file.filename, content_type=file.content_type)
+    resolved_mime_type = _resolve_mime_type(file.filename, file.content_type)
+    file_id = fs.put(content, filename=file.filename, content_type=resolved_mime_type)
 
     doc = DocumentUpload(
         clause_id=clause_id,
         filename=file.filename,
         file_id=str(file_id),
-        mime_type=file.content_type or "application/octet-stream",
+        mime_type=resolved_mime_type,
         size=len(content),
         uploaded_by=current_user.id,
     )
@@ -339,7 +411,7 @@ async def download_document(doc_id: str, current_user: User = Depends(get_curren
         file_data = fs.get(ObjectId(doc["file_id"]))
         return StreamingResponse(
             io.BytesIO(file_data.read()),
-            media_type=doc.get("mime_type", "application/octet-stream"),
+            media_type=_resolve_mime_type(doc.get("filename"), doc.get("mime_type")),
             headers={"Content-Disposition": f'attachment; filename="{doc["filename"]}"'},
         )
     except Exception as exc:
@@ -354,9 +426,19 @@ async def preview_document(doc_id: str, current_user: User = Depends(get_current
 
     try:
         file_data = fs.get(ObjectId(doc["file_id"]))
+        file_bytes = file_data.read()
+        if _is_office_document(doc.get("filename"), doc.get("mime_type")):
+            pdf_bytes = _convert_office_to_pdf(file_bytes, doc.get("filename") or "document")
+            preview_name = f'{Path(doc["filename"]).stem}.pdf'
+            return StreamingResponse(
+                io.BytesIO(pdf_bytes),
+                media_type="application/pdf",
+                headers={"Content-Disposition": f'inline; filename="{preview_name}"'},
+            )
+
         return StreamingResponse(
-            io.BytesIO(file_data.read()),
-            media_type=doc.get("mime_type", "application/octet-stream"),
+            io.BytesIO(file_bytes),
+            media_type=_resolve_mime_type(doc.get("filename"), doc.get("mime_type")),
             headers={"Content-Disposition": f'inline; filename="{doc["filename"]}"'},
         )
     except Exception as exc:

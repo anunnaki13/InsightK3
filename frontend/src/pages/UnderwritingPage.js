@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { Building2, CheckCircle2, ClipboardList, Download, ImagePlus, Plus, RefreshCcw, ShieldAlert, Sparkles, Trash2 } from 'lucide-react';
+import { Building2, CheckCircle2, ClipboardList, Download, FileText, ImagePlus, Plus, RefreshCcw, ShieldAlert, Sparkles, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 const emptySurveyForm = {
@@ -58,6 +58,7 @@ const UnderwritingPage = () => {
   const [photoMap, setPhotoMap] = useState({});
   const [uploadingItemId, setUploadingItemId] = useState(null);
   const [deletingPhotoId, setDeletingPhotoId] = useState(null);
+  const [generatingReport, setGeneratingReport] = useState(false);
 
   const canManage = ['admin', 'risk_officer'].includes(user?.role);
   const canFill = ['admin', 'risk_officer', 'surveyor'].includes(user?.role);
@@ -290,6 +291,29 @@ const UnderwritingPage = () => {
       toast.error(error.response?.data?.detail || 'Gagal menghapus foto underwriting');
     } finally {
       setDeletingPhotoId(null);
+    }
+  };
+
+  const handleGenerateReport = async () => {
+    if (!selectedSurveyId) return;
+    setGeneratingReport(true);
+    try {
+      const response = await axios.post(`${API}/underwriting/surveys/${selectedSurveyId}/report`);
+      const { filename, content } = response.data;
+      const blob = new Blob([Uint8Array.from(atob(content), (char) => char.charCodeAt(0))], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success('Report underwriting berhasil diunduh');
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Gagal membuat report underwriting');
+    } finally {
+      setGeneratingReport(false);
     }
   };
 
@@ -528,6 +552,12 @@ const UnderwritingPage = () => {
                     </div>
 
                     <div className="flex flex-wrap gap-2">
+                      {selectedSurvey && checklistItems.length > 0 && (
+                        <Button variant="outline" onClick={handleGenerateReport} className="rounded-[16px]">
+                          <FileText className="mr-2 h-4 w-4" />
+                          {generatingReport ? 'Generating...' : 'Download Report'}
+                        </Button>
+                      )}
                       {canManage && checklistItems.length === 0 && (
                         <Button onClick={handleGenerateChecklist} className="rounded-[16px] bg-slate-950 hover:bg-slate-800">
                           <ClipboardList className="mr-2 h-4 w-4" />

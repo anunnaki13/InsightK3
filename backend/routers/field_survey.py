@@ -1,8 +1,15 @@
+import base64
+import io
 import uuid
 from datetime import datetime, timezone
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import inch
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from database import db, fs
 from models.audit_models import User, UserRole
@@ -32,6 +39,108 @@ FIELD_SURVEY_READ_ROLES = {
     UserRole.SURVEYOR,
     UserRole.MANAGEMENT,
 }
+
+
+def _build_field_survey_report_pdf(survey: dict, findings: list[dict], attachment_counts: dict[str, int]) -> dict:
+    buffer = io.BytesIO()
+    document = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        leftMargin=0.55 * inch,
+        rightMargin=0.55 * inch,
+        topMargin=0.55 * inch,
+        bottomMargin=0.55 * inch,
+    )
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle("fs-title", parent=styles["Title"], fontSize=18, leading=22, textColor=colors.HexColor("#2f2a64"))
+    section_style = ParagraphStyle("fs-section", parent=styles["Heading2"], fontSize=12, leading=15, textColor=colors.HexColor("#4456a6"), spaceAfter=8)
+    body_style = ParagraphStyle("fs-body", parent=styles["BodyText"], fontSize=9, leading=12)
+    small_style = ParagraphStyle("fs-small", parent=styles["BodyText"], fontSize=8, leading=10, textColor=colors.HexColor("#556270"))
+
+    total_findings = len(findings)
+    open_findings = len([item for item in findings if item.get("status") != "closed"])
+    critical_findings = len([item for item in findings if item.get("severity") == "critical"])
+    linked_risks = len([item for item in findings if item.get("related_risk_id")])
+
+    story = [
+        Paragraph("Field Survey Report", title_style),
+        Spacer(1, 0.15 * inch),
+        Paragraph(f"Survey Code: <b>{survey.get('survey_code', '-')}</b>", body_style),
+        Paragraph(f"Survey Type: <b>{survey.get('survey_type', '-')}</b>", body_style),
+        Paragraph(f"Areas: <b>{', '.join(survey.get('area_codes', [])) or '-'}</b>", body_style),
+        Paragraph(
+            f"Status: <b>{survey.get('status', '-')}</b> | "
+            f"Actual Date: <b>{survey.get('actual_date') or '-'}</b>",
+            body_style,
+        ),
+        Spacer(1, 0.18 * inch),
+        Paragraph("Executive Summary", section_style),
+    ]
+
+    summary_rows = [
+        ["Total Findings", str(total_findings)],
+        ["Open Findings", str(open_findings)],
+        ["Critical Findings", str(critical_findings)],
+        ["Linked to ERM", str(linked_risks)],
+    ]
+    summary_table = Table(summary_rows, colWidths=[2.0 * inch, 4.8 * inch])
+    summary_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f5f6fb")),
+                ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#cfd5e6")),
+                ("INNERGRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#dfe3f0")),
+                ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 9),
+                ("PADDING", (0, 0), (-1, -1), 6),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ]
+        )
+    )
+    story.extend([summary_table, Spacer(1, 0.18 * inch), Paragraph("Findings Detail", section_style)])
+
+    detail_rows = [["Code", "Area", "Severity", "Status", "Attach", "Description / Action"]]
+    for item in findings:
+        detail_rows.append(
+            [
+                item.get("finding_code", "-"),
+                item.get("area_code", "-"),
+                item.get("severity", "-"),
+                item.get("status", "-"),
+                str(attachment_counts.get(item["id"], 0)),
+                Paragraph(
+                    (
+                        f"<b>Location:</b> {item.get('sub_location') or '-'}<br/>"
+                        f"<b>Description:</b> {item.get('description') or '-'}<br/>"
+                        f"<b>Recommendation:</b> {item.get('recommendation') or '-'}<br/>"
+                        f"<b>Risk Link:</b> {item.get('related_risk_id') or '-'}"
+                    ),
+                    small_style,
+                ),
+            ]
+        )
+    detail_table = Table(detail_rows, colWidths=[0.9 * inch, 0.8 * inch, 0.7 * inch, 0.8 * inch, 0.55 * inch, 3.55 * inch], repeatRows=1)
+    detail_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2f2a64")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#d0d7ea")),
+                ("FONTSIZE", (0, 0), (-1, -1), 7),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("PADDING", (0, 0), (-1, -1), 4),
+            ]
+        )
+    )
+    story.append(detail_table)
+
+    document.build(story)
+    return {
+        "filename": f'Field_Survey_Report_{survey.get("survey_code", "survey")}.pdf',
+        "content": base64.b64encode(buffer.getvalue()).decode("utf-8"),
+        "content_type": "application/pdf",
+    }
 
 
 def _ensure_can_read(user: User) -> None:
@@ -472,3 +581,18 @@ async def get_overdue_field_findings(current_user: User = Depends(get_current_us
         {"_id": 0},
     ).sort("deadline", 1).to_list(200)
     return {"items": items}
+
+
+@router.post("/field-survey/surveys/{survey_id}/report")
+async def generate_field_survey_report(survey_id: str, current_user: User = Depends(get_current_user)):
+    _ensure_can_read(current_user)
+    survey = await _get_survey_or_404(survey_id)
+    findings = await db.field_findings.find({"survey_id": survey_id}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    attachment_items = await db.survey_attachments.find(
+        {"parent_type": "field_finding", "parent_id": {"$in": [item["id"] for item in findings]}},
+        {"_id": 0, "parent_id": 1},
+    ).to_list(1000)
+    attachment_counts: dict[str, int] = {}
+    for item in attachment_items:
+        attachment_counts[item["parent_id"]] = attachment_counts.get(item["parent_id"], 0) + 1
+    return _build_field_survey_report_pdf(survey, findings, attachment_counts)
