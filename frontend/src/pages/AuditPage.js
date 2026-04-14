@@ -293,7 +293,9 @@ const AuditPage = () => {
       return;
     }
 
-    if (!auditorAssessment.agreed_date) {
+    const requiresAgreedDate = ['non-confirm-major', 'non-confirm-minor'].includes(auditorAssessment.auditor_status);
+
+    if (requiresAgreedDate && !auditorAssessment.agreed_date) {
       toast.error('Tentukan tanggal kesepakatan');
       return;
     }
@@ -302,7 +304,10 @@ const AuditPage = () => {
     try {
       await axios.put(
         `${API}/audit/results/${selectedClause.id}/auditor-assessment`,
-        auditorAssessment
+        {
+          ...auditorAssessment,
+          agreed_date: auditorAssessment.agreed_date || null,
+        }
       );
       toast.success('Penilaian auditor berhasil disimpan!');
       fetchAuditResult(selectedClause.id);
@@ -871,7 +876,7 @@ const AuditPage = () => {
                         {/* Due Date */}
                         <div className="space-y-2">
                           <Label className="text-sm font-semibold text-slate-900">
-                            Tanggal Kesepakatan Penyelesaian <span className="text-red-500">*</span>
+                            Tanggal Kesepakatan Penyelesaian {['non-confirm-major', 'non-confirm-minor'].includes(auditorAssessment.auditor_status) && <span className="text-red-500">*</span>}
                           </Label>
                           <Popover>
                             <PopoverTrigger asChild>
@@ -906,7 +911,7 @@ const AuditPage = () => {
                             </PopoverContent>
                           </Popover>
                           <p className="text-xs text-slate-500">
-                            Tanggal kesepakatan kapan temuan/rekomendasi akan diselesaikan oleh auditee
+                            Wajib diisi hanya untuk status non-confirm minor atau non-confirm major.
                           </p>
                         </div>
 

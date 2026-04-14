@@ -111,7 +111,7 @@ class AuditResult(BaseModel):
 class AuditorAssessment(BaseModel):
     auditor_status: str
     auditor_notes: str
-    agreed_date: str
+    agreed_date: Optional[str] = None
 
 
 class Recommendation(BaseModel):

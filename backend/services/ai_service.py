@@ -134,6 +134,8 @@ def _build_analysis_content(
                 f"{knowledge_base}\n\n"
                 f"{context_block}"
                 "Nilai kesesuaian dokumen yang diupload dengan dokumen yang diminta.\n\n"
+                "Jangan menjadikan tahun, tanggal, atau nomor dokumen sebagai penentu utama.\n"
+                "Fokus pada substansi, otorisasi, cakupan, implementasi, dan keterlacakan evidence.\n\n"
                 "Berikan respons HANYA dalam format berikut (jangan tambahkan teks lain):\n"
                 "STATUS: [Sesuai / Belum Sesuai]\n"
                 "SKOR: [angka 0-100]\n"

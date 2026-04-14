@@ -554,13 +554,21 @@ async def update_auditor_assessment(
     if not result:
         raise HTTPException(status_code=404, detail="Audit result not found. Please run AI analysis first.")
 
+    requires_agreed_date = assessment.auditor_status in ("non-confirm-major", "non-confirm-minor")
+    agreed_date_value = (assessment.agreed_date or "").strip()
+    if requires_agreed_date and not agreed_date_value:
+        raise HTTPException(
+            status_code=400,
+            detail="Tanggal kesepakatan penyelesaian wajib diisi untuk non-confirm major/minor.",
+        )
+
     update_data = {
         "auditor_status": assessment.auditor_status,
         "auditor_notes": assessment.auditor_notes,
-        "agreed_date": datetime.fromisoformat(assessment.agreed_date).isoformat(),
         "auditor_assessed_at": datetime.now(timezone.utc).isoformat(),
         "auditor_assessed_by": current_user.id,
     }
+    update_data["agreed_date"] = datetime.fromisoformat(agreed_date_value).isoformat() if agreed_date_value else None
 
     await db.audit_results.update_one({"clause_id": clause_id}, {"$set": update_data})
 
