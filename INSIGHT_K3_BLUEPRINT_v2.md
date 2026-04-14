@@ -90,9 +90,9 @@ fs.chunks         — GridFS chunks
 
 ```python
 # Di server.py saat ini menggunakan:
-from emergentintegrations.llm.chat import LlmChat, UserMessage, FileContentWithMimeType
-EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY", "")
-chat = LlmChat(api_key=EMERGENT_LLM_KEY, ...).with_model("gemini", "gemini-2.0-flash")
+from legacy_ai_provider import LlmChat, UserMessage, FileContentWithMimeType
+LEGACY_AI_KEY = os.environ.get("LEGACY_AI_KEY", "")
+chat = LlmChat(api_key=LEGACY_AI_KEY, ...).with_model("gemini", "gemini-2.0-flash")
 ```
 
 **Ini akan diganti sepenuhnya dengan OpenRouter. Lihat bagian 4.**
@@ -135,7 +135,7 @@ Audit SMK3 saja          →         Audit SMK3 (existing, tidak berubah)
                                    + Peralatan Tanggap Darurat (BARU)
                                    + Risk Heatmap & Dashboard (BARU)
 
-AI: Emergent/Gemini       →        AI: OpenRouter (multi-model)
+AI: Legacy/Gemini         →        AI: OpenRouter (multi-model)
 
 Role: admin/auditor/auditee →      + risk_officer, surveyor, management
 ```
@@ -167,7 +167,7 @@ Claude, Gemini, Mistral, Llama, dll.) dengan **satu API key dan satu endpoint ya
 Format request-nya kompatibel dengan OpenAI SDK sehingga kode lebih simpel dan mudah diganti
 modelnya sewaktu-waktu tanpa ubah struktur kode.
 
-Keuntungan dibanding Emergent Integrations:
+Keuntungan dibanding integrasi AI lama:
 - API key satu untuk semua model
 - Bisa ganti model cukup dengan ubah 1 string di `.env`
 - Biaya lebih transparan (per token, bisa pantau di dashboard OpenRouter)
@@ -210,7 +210,7 @@ Referensi semua model tersedia di: https://openrouter.ai/models
 """
 ai_service.py
 Centralized AI service menggunakan OpenRouter API.
-Menggantikan penggunaan emergentintegrations di server.py.
+Menggantikan penggunaan integrasi AI lama di server.py.
 """
 
 import os
@@ -486,8 +486,8 @@ Cari fungsi `analyze_clause` di `server.py` dan ganti bagian pemanggilan AI-nya:
 
 ```python
 # HAPUS ini:
-from emergentintegrations.llm.chat import LlmChat, UserMessage, FileContentWithMimeType
-EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY", "")
+from legacy_ai_provider import LlmChat, UserMessage, FileContentWithMimeType
+LEGACY_AI_KEY = os.environ.get("LEGACY_AI_KEY", "")
 
 # GANTI dengan:
 from services.ai_service import analyze_document_evidence
@@ -525,7 +525,7 @@ analysis = await analyze_document_evidence(
 
 ```env
 # HAPUS atau biarkan (tidak dipakai lagi):
-# EMERGENT_LLM_KEY=...
+# LEGACY_AI_KEY=...
 
 # TAMBAHKAN:
 OPENROUTER_API_KEY=sk-or-v1-xxxxxxxxxxxxxxxxxxxx
@@ -538,7 +538,7 @@ OPENROUTER_MODEL_REPORT=google/gemini-2.0-flash-001
 
 ```txt
 # HAPUS:
-emergentintegrations==0.1.0
+legacy-ai-sdk==0.1.0
 
 # TAMBAHKAN:
 httpx==0.27.0
@@ -2275,7 +2275,7 @@ PHOTO_COMPRESSION_QUALITY=85
 CORS_ORIGINS=http://localhost:3000
 
 # ── DEPRECATED — tidak dipakai lagi ──
-# EMERGENT_LLM_KEY=...
+# LEGACY_AI_KEY=...
 ```
 
 ### Cara Dapatkan OpenRouter API Key

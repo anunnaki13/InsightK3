@@ -13,7 +13,7 @@
 - Frontend berikutnya akan diarahkan ke visual yang profesional, clean, modern, dan premium, tanpa memutus flow existing.
 
 ## Phase Sequence
-1. Migrate AI integration from Emergent to OpenRouter.
+1. Migrate legacy AI integration to OpenRouter.
 2. Refactor backend monolith into `routers/`, `models/`, `services/`, and `database.py`.
 3. Implement ERM Risk Register as modul pertama di atas fondasi baru.
 4. Modernize navigation and UI shell before adding the rest of the new modules.

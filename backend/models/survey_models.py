@@ -126,6 +126,19 @@ class SurveyChecklistItemUpdate(BaseModel):
     pic: Optional[str] = None
 
 
+class SurveyAttachment(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    parent_type: str
+    parent_id: str
+    file_role: str = "photo"
+    filename: str
+    file_id: str
+    mime_type: str
+    size: int
+    uploaded_by: str
+    uploaded_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+
 class FieldSurveyCreate(BaseModel):
     survey_type: str
     area_codes: List[str]

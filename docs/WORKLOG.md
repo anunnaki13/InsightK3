@@ -4,9 +4,9 @@
 - Menyiapkan repo baru `InsightK3` sebagai workspace utama.
 - Menyalin baseline aplikasi dari repo sumber tanpa membawa riwayat Git lama.
 - Menetapkan urutan kerja awal: dokumentasi fondasi, migrasi AI, lalu refactor backend.
-- Memulai implementasi Step 1 blueprint: migrasi AI dari Emergent ke OpenRouter.
+- Memulai implementasi Step 1 blueprint: migrasi AI dari provider lama ke OpenRouter.
 - Menambahkan `backend/services/ai_service.py` sebagai service AI terpusat untuk OpenRouter.
-- Mengubah endpoint analisis audit existing agar tidak lagi bergantung pada `emergentintegrations`.
+- Mengubah endpoint analisis audit existing agar tidak lagi bergantung pada library AI lama.
 - Menambahkan template environment untuk backend dan frontend.
 - Memulai Step 2 blueprint dengan memecah backend monolitik menjadi `database.py`, `models/`, dan `routers/`.
 - Menjadikan `backend/server.py` sebagai entry point tipis yang hanya memuat app, middleware, dan router registration.

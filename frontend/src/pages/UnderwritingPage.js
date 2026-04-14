@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { Building2, CheckCircle2, ClipboardList, Plus, RefreshCcw, ShieldAlert, Sparkles } from 'lucide-react';
+import { Building2, CheckCircle2, ClipboardList, Download, ImagePlus, Plus, RefreshCcw, ShieldAlert, Sparkles, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 const emptySurveyForm = {
@@ -55,6 +55,9 @@ const UnderwritingPage = () => {
   const [surveyForm, setSurveyForm] = useState(emptySurveyForm);
   const [drafts, setDrafts] = useState({});
   const [savingItemId, setSavingItemId] = useState(null);
+  const [photoMap, setPhotoMap] = useState({});
+  const [uploadingItemId, setUploadingItemId] = useState(null);
+  const [deletingPhotoId, setDeletingPhotoId] = useState(null);
 
   const canManage = ['admin', 'risk_officer'].includes(user?.role);
   const canFill = ['admin', 'risk_officer', 'surveyor'].includes(user?.role);
@@ -139,6 +142,18 @@ const UnderwritingPage = () => {
           ]),
         ),
       );
+      const items = detailRes.data.checklist_items || [];
+      if (items.length > 0) {
+        const photoEntries = await Promise.all(
+          items.map(async (item) => {
+            const response = await axios.get(`${API}/underwriting/checklist-items/${item.id}/photos`);
+            return [item.id, response.data.items || []];
+          }),
+        );
+        setPhotoMap(Object.fromEntries(photoEntries));
+      } else {
+        setPhotoMap({});
+      }
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Gagal memuat detail underwriting survey');
     } finally {
@@ -228,6 +243,53 @@ const UnderwritingPage = () => {
       toast.error(error.response?.data?.detail || 'Gagal memperbarui checklist item');
     } finally {
       setSavingItemId(null);
+    }
+  };
+
+  const handleUploadPhoto = async (itemId, file) => {
+    if (!file) return;
+    const formData = new FormData();
+    formData.append('file', file);
+    setUploadingItemId(itemId);
+    try {
+      await axios.post(`${API}/underwriting/checklist-items/${itemId}/photos`, formData);
+      toast.success('Foto underwriting berhasil diupload');
+      fetchSurveyDetail(selectedSurveyId);
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Gagal upload foto underwriting');
+    } finally {
+      setUploadingItemId(null);
+    }
+  };
+
+  const handleDownloadPhoto = async (photo) => {
+    try {
+      const response = await axios.get(`${API}/underwriting/files/${photo.id}/download`, {
+        responseType: 'blob',
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = photo.filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Gagal mengunduh foto underwriting');
+    }
+  };
+
+  const handleDeletePhoto = async (photoId) => {
+    setDeletingPhotoId(photoId);
+    try {
+      await axios.delete(`${API}/underwriting/files/${photoId}`);
+      toast.success('Foto underwriting dihapus');
+      fetchSurveyDetail(selectedSurveyId);
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Gagal menghapus foto underwriting');
+    } finally {
+      setDeletingPhotoId(null);
     }
   };
 
@@ -606,6 +668,66 @@ const UnderwritingPage = () => {
                         >
                           {savingItemId === item.id ? 'Saving...' : 'Save'}
                         </Button>
+                      </div>
+                    </div>
+                    <div className="mt-4 rounded-[18px] border border-dashed border-slate-200 bg-white/80 p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-950">Photo Evidence</p>
+                          <p className="text-xs text-slate-500">Upload foto untuk item underwriting ini.</p>
+                        </div>
+                        {canFill && (
+                          <div>
+                            <input
+                              id={`underwriting-photo-${item.id}`}
+                              type="file"
+                              accept="image/*,.pdf"
+                              className="hidden"
+                              onChange={(event) => {
+                                const file = event.target.files?.[0];
+                                handleUploadPhoto(item.id, file);
+                                event.target.value = '';
+                              }}
+                            />
+                            <Button asChild variant="outline" className="rounded-[14px]">
+                              <label htmlFor={`underwriting-photo-${item.id}`} className="cursor-pointer">
+                                <ImagePlus className="mr-2 h-4 w-4" />
+                                {uploadingItemId === item.id ? 'Uploading...' : 'Upload'}
+                              </label>
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                      <div className="mt-3 space-y-2">
+                        {(photoMap[item.id] || []).length === 0 ? (
+                          <p className="text-xs text-slate-500">Belum ada attachment.</p>
+                        ) : (
+                          (photoMap[item.id] || []).map((photo) => (
+                            <div key={photo.id} className="flex flex-wrap items-center justify-between gap-3 rounded-[14px] bg-slate-50 px-3 py-2">
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-medium text-slate-950">{photo.filename}</p>
+                                <p className="text-xs text-slate-500">{Math.round((photo.size || 0) / 1024)} KB</p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Button type="button" size="sm" variant="outline" className="rounded-[12px]" onClick={() => handleDownloadPhoto(photo)}>
+                                  <Download className="h-4 w-4" />
+                                </Button>
+                                {canFill && (
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    className="rounded-[12px]"
+                                    disabled={deletingPhotoId === photo.id}
+                                    onClick={() => handleDeletePhoto(photo.id)}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+                          ))
+                        )}
                       </div>
                     </div>
                   </div>

@@ -28,7 +28,7 @@ MONGO_URL=mongodb://smk3admin:STRONG_PASSWORD@localhost:27017/smk3_audit_db?auth
 DB_NAME=smk3_audit_db
 JWT_SECRET=$(openssl rand -hex 32)  # MUST be random and unique!
 JWT_ALGORITHM=HS256
-EMERGENT_LLM_KEY=production-api-key
+OPENROUTER_API_KEY=production-api-key
 ```
 
 **Frontend `.env` Production:**

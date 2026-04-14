@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { AlertTriangle, ClipboardList, Plus, RefreshCcw, ShieldAlert, Siren, Sparkles } from 'lucide-react';
+import { AlertTriangle, ClipboardList, Download, ImagePlus, Plus, RefreshCcw, ShieldAlert, Siren, Sparkles, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 const emptySurveyForm = {
@@ -61,6 +61,9 @@ const FieldSurveyPage = () => {
   const [findingDialogOpen, setFindingDialogOpen] = useState(false);
   const [surveyForm, setSurveyForm] = useState(emptySurveyForm);
   const [findingForm, setFindingForm] = useState(emptyFindingForm);
+  const [photoMap, setPhotoMap] = useState({});
+  const [uploadingFindingId, setUploadingFindingId] = useState(null);
+  const [deletingPhotoId, setDeletingPhotoId] = useState(null);
 
   const canWrite = ['admin', 'risk_officer', 'surveyor'].includes(user?.role);
 
@@ -124,6 +127,18 @@ const FieldSurveyPage = () => {
       setSeverityLevels(severityRes.data || []);
       setSurveys(surveysRes.data.items || []);
       setFindings(findingsRes.data.items || []);
+      const allFindings = findingsRes.data.items || [];
+      if (allFindings.length > 0) {
+        const photoEntries = await Promise.all(
+          allFindings.map(async (item) => {
+            const response = await axios.get(`${API}/field-survey/findings/${item.id}/photos`);
+            return [item.id, response.data.items || []];
+          }),
+        );
+        setPhotoMap(Object.fromEntries(photoEntries));
+      } else {
+        setPhotoMap({});
+      }
       setDashboard(dashboardRes.data.areas || []);
       setOverdue(overdueRes.data.items || []);
     } catch (error) {
@@ -205,6 +220,59 @@ const FieldSurveyPage = () => {
       fetchSurveyDetail(selectedSurveyId);
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Gagal menutup survey');
+    }
+  };
+
+  const handleUploadFindingPhoto = async (findingId, file) => {
+    if (!file) return;
+    const formData = new FormData();
+    formData.append('file', file);
+    setUploadingFindingId(findingId);
+    try {
+      await axios.post(`${API}/field-survey/findings/${findingId}/photos`, formData);
+      toast.success('Foto finding berhasil diupload');
+      fetchData();
+      if (selectedSurveyId) {
+        fetchSurveyDetail(selectedSurveyId);
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Gagal upload foto finding');
+    } finally {
+      setUploadingFindingId(null);
+    }
+  };
+
+  const handleDownloadFindingPhoto = async (photo) => {
+    try {
+      const response = await axios.get(`${API}/field-survey/files/${photo.id}/download`, {
+        responseType: 'blob',
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = photo.filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Gagal mengunduh foto finding');
+    }
+  };
+
+  const handleDeleteFindingPhoto = async (photoId) => {
+    setDeletingPhotoId(photoId);
+    try {
+      await axios.delete(`${API}/field-survey/files/${photoId}`);
+      toast.success('Foto finding dihapus');
+      fetchData();
+      if (selectedSurveyId) {
+        fetchSurveyDetail(selectedSurveyId);
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Gagal menghapus foto finding');
+    } finally {
+      setDeletingPhotoId(null);
     }
   };
 
@@ -566,6 +634,66 @@ const FieldSurveyPage = () => {
                             Linked to ERM risk item: <span className="font-semibold">{item.related_risk_id}</span>
                           </div>
                         )}
+                        <div className="mt-4 rounded-[18px] border border-dashed border-slate-200 bg-white/80 p-4">
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-semibold text-slate-950">Photo Evidence</p>
+                              <p className="text-xs text-slate-500">Lampirkan foto lapangan untuk finding ini.</p>
+                            </div>
+                            {canWrite && (
+                              <div>
+                                <input
+                                  id={`field-photo-${item.id}`}
+                                  type="file"
+                                  accept="image/*,.pdf"
+                                  className="hidden"
+                                  onChange={(event) => {
+                                    const file = event.target.files?.[0];
+                                    handleUploadFindingPhoto(item.id, file);
+                                    event.target.value = '';
+                                  }}
+                                />
+                                <Button asChild variant="outline" className="rounded-[14px]">
+                                  <label htmlFor={`field-photo-${item.id}`} className="cursor-pointer">
+                                    <ImagePlus className="mr-2 h-4 w-4" />
+                                    {uploadingFindingId === item.id ? 'Uploading...' : 'Upload'}
+                                  </label>
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                          <div className="mt-3 space-y-2">
+                            {(photoMap[item.id] || []).length === 0 ? (
+                              <p className="text-xs text-slate-500">Belum ada attachment.</p>
+                            ) : (
+                              (photoMap[item.id] || []).map((photo) => (
+                                <div key={photo.id} className="flex flex-wrap items-center justify-between gap-3 rounded-[14px] bg-slate-50 px-3 py-2">
+                                  <div className="min-w-0">
+                                    <p className="truncate text-sm font-medium text-slate-950">{photo.filename}</p>
+                                    <p className="text-xs text-slate-500">{Math.round((photo.size || 0) / 1024)} KB</p>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <Button type="button" size="sm" variant="outline" className="rounded-[12px]" onClick={() => handleDownloadFindingPhoto(photo)}>
+                                      <Download className="h-4 w-4" />
+                                    </Button>
+                                    {canWrite && (
+                                      <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        className="rounded-[12px]"
+                                        disabled={deletingPhotoId === photo.id}
+                                        onClick={() => handleDeleteFindingPhoto(photo.id)}
+                                      >
+                                        <Trash2 className="h-4 w-4" />
+                                      </Button>
+                                    )}
+                                  </div>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </div>
                       </div>
                       {canWrite && item.status !== 'closed' && (
                         <Button variant="outline" onClick={() => handleCloseFinding(item.id)} className="rounded-[16px]">

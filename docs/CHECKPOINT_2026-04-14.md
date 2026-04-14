@@ -17,7 +17,7 @@ Dokumen ini adalah checkpoint resume singkat agar sesi berikutnya bisa langsung 
 
 ## Completed Modules
 ### Core Platform
-- Migrasi AI existing dari Emergent ke OpenRouter.
+- Migrasi AI existing dari provider lama ke OpenRouter.
 - Refactor backend dari monolitik ke arsitektur modular.
 - Modernisasi UI shell dan halaman inti audit dengan arah visual premium.
 

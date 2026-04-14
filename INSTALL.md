@@ -198,7 +198,7 @@ MONGO_URL=mongodb://localhost:27017
 DB_NAME=smk3_audit_db
 JWT_SECRET=$(openssl rand -hex 32)  # Generate random secret
 JWT_ALGORITHM=HS256
-EMERGENT_LLM_KEY=your-actual-api-key-here
+OPENROUTER_API_KEY=your-actual-api-key-here
 ```
 
 **Generate JWT Secret:**

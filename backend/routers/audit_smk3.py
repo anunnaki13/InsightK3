@@ -841,16 +841,17 @@ async def seed_initial_data(current_user: User = Depends(get_current_user)):
         raise HTTPException(status_code=403, detail="Only admins can seed data")
 
     existing_criteria = await db.criteria.count_documents({})
-    if existing_criteria > 0:
+    existing_clauses = await db.clauses.count_documents({})
+    if existing_criteria > 0 and existing_clauses == 166:
         return {
             "message": "Data already seeded",
             "criteria_count": existing_criteria,
-            "clauses_count": await db.clauses.count_documents({}),
+            "clauses_count": existing_clauses,
         }
 
     backend_dir = os.path.dirname(os.path.dirname(__file__))
     result = subprocess.run(
-        ["python3", "populate_smk3_data.py"],
+        ["python3", "seed_full_audit_data.py"],
         cwd=backend_dir,
         capture_output=True,
         text=True,
@@ -859,7 +860,7 @@ async def seed_initial_data(current_user: User = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail=f"Failed to seed data: {result.stderr}")
 
     return {
-        "message": "SMK3 data seeded successfully with knowledge base",
+        "message": "SMK3 data seeded successfully with the full 166-clause dataset",
         "criteria_count": await db.criteria.count_documents({}),
         "clauses_count": await db.clauses.count_documents({}),
     }

@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 import time
 
 class SMK3AuditAPITester:
-    def __init__(self, base_url="https://smk3-audit.preview.emergentagent.com"):
+    def __init__(self, base_url="http://72.60.236.126:3002"):
         self.base_url = base_url
         self.api_url = f"{base_url}/api"
         self.token = None

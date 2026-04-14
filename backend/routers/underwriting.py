@@ -1,13 +1,15 @@
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from bson import ObjectId
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
 
-from database import db
+from database import db, fs
 from models.audit_models import User, UserRole
 from models.erm_models import RISK_CATEGORIES
 from models.survey_models import (
     UNDERWRITING_CATEGORIES,
+    SurveyAttachment,
     SurveyChecklistItem,
     SurveyChecklistItemUpdate,
     UnderwritingSurvey,
@@ -56,6 +58,23 @@ async def _get_survey_or_404(survey_id: str) -> dict:
     if not survey:
         raise HTTPException(status_code=404, detail="Underwriting survey not found")
     return survey
+
+
+async def _get_checklist_item_or_404(item_id: str) -> dict:
+    item = await db.underwriting_survey_items.find_one({"id": item_id}, {"_id": 0})
+    if not item:
+        raise HTTPException(status_code=404, detail="Checklist item not found")
+    return item
+
+
+async def _get_underwriting_attachment_or_404(attachment_id: str) -> dict:
+    attachment = await db.survey_attachments.find_one(
+        {"id": attachment_id, "parent_type": "underwriting_checklist_item"},
+        {"_id": 0},
+    )
+    if not attachment:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    return attachment
 
 
 async def _next_survey_code() -> str:
@@ -299,9 +318,87 @@ async def update_underwriting_checklist_item(
 
 
 @router.post("/underwriting/checklist-items/{item_id}/photos")
-async def upload_underwriting_photo(item_id: str, current_user: User = Depends(get_current_user)):
+async def upload_underwriting_photo(
+    item_id: str,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+):
     _ensure_can_fill_checklist(current_user)
-    raise HTTPException(status_code=501, detail="Photo upload is planned but not implemented yet")
+    await _get_checklist_item_or_404(item_id)
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty")
+
+    file_id = fs.put(content, filename=file.filename, content_type=file.content_type)
+    attachment = SurveyAttachment(
+        parent_type="underwriting_checklist_item",
+        parent_id=item_id,
+        filename=file.filename or "attachment",
+        file_id=str(file_id),
+        mime_type=file.content_type or "application/octet-stream",
+        size=len(content),
+        uploaded_by=current_user.id,
+    )
+    await db.survey_attachments.insert_one(attachment.model_dump())
+    await db.underwriting_survey_items.update_one(
+        {"id": item_id},
+        {
+            "$addToSet": {"photo_file_ids": attachment.file_id},
+            "$set": {"updated_at": datetime.now(timezone.utc).isoformat()},
+        },
+    )
+    return attachment
+
+
+@router.get("/underwriting/checklist-items/{item_id}/photos")
+async def list_underwriting_photos(item_id: str, current_user: User = Depends(get_current_user)):
+    _ensure_can_read(current_user)
+    await _get_checklist_item_or_404(item_id)
+    items = await db.survey_attachments.find(
+        {"parent_type": "underwriting_checklist_item", "parent_id": item_id},
+        {"_id": 0},
+    ).sort("uploaded_at", -1).to_list(100)
+    return {"items": items}
+
+
+@router.get("/underwriting/files/{attachment_id}/download")
+async def download_underwriting_photo(attachment_id: str, current_user: User = Depends(get_current_user)):
+    _ensure_can_read(current_user)
+    attachment = await _get_underwriting_attachment_or_404(attachment_id)
+    try:
+        file_data = fs.get(ObjectId(attachment["file_id"]))
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=f"Stored file not found: {exc}")
+
+    return Response(
+        content=file_data.read(),
+        media_type=attachment.get("mime_type") or "application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{attachment["filename"]}"'},
+    )
+
+
+@router.delete("/underwriting/files/{attachment_id}")
+async def delete_underwriting_photo(attachment_id: str, current_user: User = Depends(get_current_user)):
+    _ensure_can_fill_checklist(current_user)
+    attachment = await _get_underwriting_attachment_or_404(attachment_id)
+    await db.survey_attachments.delete_one({"id": attachment_id})
+    await db.underwriting_survey_items.update_one(
+        {"id": attachment["parent_id"]},
+        {
+            "$pull": {"photo_file_ids": attachment["file_id"]},
+            "$set": {"updated_at": datetime.now(timezone.utc).isoformat()},
+        },
+    )
+
+    still_referenced = await db.survey_attachments.count_documents({"file_id": attachment["file_id"]})
+    if still_referenced == 0:
+        try:
+            fs.delete(ObjectId(attachment["file_id"]))
+        except Exception:
+            pass
+
+    return {"message": "Attachment deleted"}
 
 
 @router.get("/underwriting/surveys/{survey_id}/score")

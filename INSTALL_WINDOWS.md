@@ -150,7 +150,7 @@ MONGO_URL=mongodb://localhost:27017
 DB_NAME=smk3_audit_db
 JWT_SECRET=your-super-secret-jwt-key-change-in-production
 JWT_ALGORITHM=HS256
-EMERGENT_LLM_KEY=your-emergent-llm-key-or-gemini-api-key
+OPENROUTER_API_KEY=your-openrouter-api-key
 ```
 
 **Generate JWT Secret (PowerShell):**
