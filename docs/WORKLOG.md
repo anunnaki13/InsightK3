@@ -34,3 +34,6 @@
 - Menambahkan dokumentasi checkpoint resume dan progress summary agar sesi berikutnya bisa langsung lanjut tanpa kehilangan konteks.
 - Mengimplementasikan fondasi Modul E Heatmap & Consolidated Dashboard pada backend: area summary lintas modul, KPI unit, trend, risk matrix, top risks, critical alerts, dan action items.
 - Mengganti placeholder heatmap dengan dashboard frontend konsolidasi yang membaca data dari modul audit, ERM, underwriting, field survey, dan equipment.
+- Menyiapkan deployment VPS awal: memasang MongoDB lokal, membuat env lokal, menginstal dependency runtime backend/frontend, build frontend production, dan mendaftarkan service `systemd` untuk backend/frontend.
+- Menetapkan port deploy aktif: frontend `3002`, backend `8001`, karena `3000` dan `3001` sudah dipakai aplikasi lain di VPS.
+- Membuat user admin awal untuk akses pertama dan mendokumentasikan status deployment aktual di `docs/VPS_DEPLOYMENT_2026-04-14.md`.

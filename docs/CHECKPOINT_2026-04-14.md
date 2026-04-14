@@ -7,6 +7,7 @@ Dokumen ini adalah checkpoint resume singkat agar sesi berikutnya bisa langsung 
 - Remote utama: `origin` → `https://github.com/anunnaki13/InsightK3.git`
 - Branch aktif: `main`
 - Semua perubahan sampai checkpoint ini sudah dipush ke GitHub.
+- Status deploy VPS juga sudah ada dan didokumentasikan di `docs/VPS_DEPLOYMENT_2026-04-14.md`.
 
 ## Latest Completed Commits
 - `a5eb133` Build emergency equipment readiness module foundation
@@ -38,19 +39,19 @@ Dokumen ini adalah checkpoint resume singkat agar sesi berikutnya bisa langsung 
 - Manual alert check endpoint juga sudah tersedia.
 
 ## Not Yet Completed
-- Modul E `Risk Heatmap & Consolidated Dashboard`
 - Upload file/photo pada modul-modul baru
 - Report/PDF generation pada modul-modul baru
 - Scheduler harian untuk alert equipment
-- Full frontend install/build verification
+- Penyempurnaan data seed audit penuh karena populate saat ini baru menghasilkan `105` klausul
+- Hardening production lanjutan: reverse proxy, SSL, dan firewall policy
 
 ## Immediate Next Step
-Implement Modul E `Risk Heatmap & Consolidated Dashboard` dengan agregasi dari:
-- Audit SMK3
-- ERM Risk Register
-- Underwriting Survey
-- Field Survey
-- Emergency Equipment Readiness
+Lanjut ke production hardening:
+- upload/file handling
+- report generation
+- scheduler harian equipment alert
+- audit data seed
+- reverse proxy dan SSL
 
 ## Notes For Resume
 - Jika sesi berikutnya dimulai, lanjut langsung dari implementasi Modul E.
