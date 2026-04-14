@@ -498,6 +498,7 @@ async def analyze_clause(clause_id: str, current_user: User = Depends(get_curren
             )
 
         analysis = await analyze_document_evidence(
+            db=db,
             clause_title=clause["title"],
             clause_description=clause["description"],
             knowledge_base=knowledge_base,

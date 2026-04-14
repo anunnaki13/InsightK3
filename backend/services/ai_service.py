@@ -1,6 +1,4 @@
-"""
-Centralized AI service using OpenRouter's OpenAI-compatible API.
-"""
+"""Centralized AI service using OpenRouter's OpenAI-compatible API."""
 
 from __future__ import annotations
 
@@ -10,26 +8,105 @@ from typing import Any
 
 import httpx
 
-OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
-OPENROUTER_BASE_URL = os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
-
-MODEL_ANALYSIS = os.environ.get("OPENROUTER_MODEL_ANALYSIS", "google/gemini-2.0-flash-001")
-MODEL_RISK = os.environ.get("OPENROUTER_MODEL_RISK", "anthropic/claude-3.5-haiku")
-MODEL_REPORT = os.environ.get("OPENROUTER_MODEL_REPORT", "google/gemini-2.0-flash-001")
+DEFAULT_OPENROUTER_BASE_URL = os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+DEFAULT_MODEL_ANALYSIS = os.environ.get("OPENROUTER_MODEL_ANALYSIS", "google/gemini-2.0-flash-001")
+DEFAULT_MODEL_RISK = os.environ.get("OPENROUTER_MODEL_RISK", "anthropic/claude-3.5-haiku")
+DEFAULT_MODEL_REPORT = os.environ.get("OPENROUTER_MODEL_REPORT", "google/gemini-2.0-flash-001")
 
 
-def _headers() -> dict[str, str]:
+def _headers(api_key: str) -> dict[str, str]:
     return {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
         "HTTP-Referer": os.environ.get("OPENROUTER_SITE_URL", "https://insight-k3.local"),
         "X-Title": os.environ.get("OPENROUTER_APP_NAME", "InsightK3"),
     }
 
 
-def _ensure_api_key() -> None:
-    if not OPENROUTER_API_KEY:
+def _ensure_api_key(api_key: str) -> None:
+    if not api_key:
         raise RuntimeError("OPENROUTER_API_KEY is not configured")
+
+
+def mask_api_key(api_key: str) -> str | None:
+    if not api_key:
+        return None
+    if len(api_key) <= 10:
+        return "*" * len(api_key)
+    return f"{api_key[:6]}...{api_key[-4:]}"
+
+
+async def get_openrouter_runtime_settings(db) -> dict[str, Any]:
+    stored = await db.app_settings.find_one({"key": "openrouter"}, {"_id": 0})
+    if stored:
+        return {
+            "api_key": stored.get("api_key", ""),
+            "model": stored.get("model") or DEFAULT_MODEL_ANALYSIS,
+            "base_url": DEFAULT_OPENROUTER_BASE_URL,
+            "settings_source": "database",
+            "verified_at": stored.get("verified_at"),
+            "key_label": stored.get("key_label"),
+            "key_limit_remaining": stored.get("key_limit_remaining"),
+            "key_usage": stored.get("key_usage"),
+        }
+
+    env_api_key = os.environ.get("OPENROUTER_API_KEY", "")
+    fallback_model = DEFAULT_MODEL_ANALYSIS or DEFAULT_MODEL_RISK or DEFAULT_MODEL_REPORT
+    return {
+        "api_key": env_api_key,
+        "model": fallback_model,
+        "base_url": DEFAULT_OPENROUTER_BASE_URL,
+        "settings_source": "environment" if env_api_key else "unset",
+        "verified_at": None,
+        "key_label": None,
+        "key_limit_remaining": None,
+        "key_usage": None,
+    }
+
+
+async def verify_openrouter_credentials(api_key: str, model: str | None = None) -> dict[str, Any]:
+    _ensure_api_key(api_key)
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        key_response = await client.get(
+            f"{DEFAULT_OPENROUTER_BASE_URL}/key",
+            headers=_headers(api_key),
+        )
+        key_response.raise_for_status()
+        key_data = (key_response.json() or {}).get("data", {})
+
+        models_response = await client.get(
+            f"{DEFAULT_OPENROUTER_BASE_URL}/models",
+            headers=_headers(api_key),
+        )
+        models_response.raise_for_status()
+        models = (models_response.json() or {}).get("data", [])
+
+    available_model_ids = {item.get("id") for item in models if item.get("id")}
+    return {
+        "key_info": {
+            "label": key_data.get("label") or key_data.get("name"),
+            "limit_remaining": key_data.get("limit_remaining"),
+            "usage": key_data.get("usage"),
+            "is_free_tier": key_data.get("is_free_tier"),
+        },
+        "model_exists": model in available_model_ids if model else None,
+        "available_models": [
+            {
+                "id": item.get("id"),
+                "name": item.get("name") or item.get("id"),
+                "context_length": item.get("context_length"),
+                "pricing": item.get("pricing", {}),
+            }
+            for item in models
+            if item.get("id")
+        ],
+    }
+
+
+async def list_openrouter_models(api_key: str) -> list[dict[str, Any]]:
+    verification = await verify_openrouter_credentials(api_key)
+    return verification["available_models"]
 
 
 def _encode_file_to_base64(file_bytes: bytes) -> str:
@@ -145,16 +222,19 @@ def _parse_analysis_response(raw: str) -> dict[str, Any]:
 
 
 async def analyze_document_evidence(
+    db,
     clause_title: str,
     clause_description: str,
     knowledge_base: str,
     documents: list[dict[str, Any]],
     additional_context: str = "",
 ) -> dict[str, Any]:
-    _ensure_api_key()
+    runtime = await get_openrouter_runtime_settings(db)
+    api_key = runtime["api_key"]
+    _ensure_api_key(api_key)
 
     payload = {
-        "model": MODEL_ANALYSIS,
+        "model": runtime["model"] or DEFAULT_MODEL_ANALYSIS,
         "max_tokens": 1500,
         "messages": [
             {
@@ -172,8 +252,8 @@ async def analyze_document_evidence(
 
     async with httpx.AsyncClient(timeout=60.0) as client:
         response = await client.post(
-            f"{OPENROUTER_BASE_URL}/chat/completions",
-            headers=_headers(),
+            f'{runtime["base_url"]}/chat/completions',
+            headers=_headers(api_key),
             json=payload,
         )
         response.raise_for_status()
@@ -182,13 +262,16 @@ async def analyze_document_evidence(
 
 
 async def assess_risk_item(
+    db,
     risk_title: str,
     risk_description: str,
     area: str,
     category: str,
     existing_controls: str = "",
 ) -> dict[str, Any]:
-    _ensure_api_key()
+    runtime = await get_openrouter_runtime_settings(db)
+    api_key = runtime["api_key"]
+    _ensure_api_key(api_key)
 
     prompt = f"""Kamu adalah risk assessor K3 senior untuk unit pembangkit PLTU.
 Berikan penilaian risiko untuk item berikut.
@@ -210,15 +293,15 @@ PENGENDALIAN_APD: [APD yang diperlukan]
 ALASAN: [penjelasan singkat penilaian]"""
 
     payload = {
-        "model": MODEL_RISK,
+        "model": runtime["model"] or DEFAULT_MODEL_RISK,
         "max_tokens": 1000,
         "messages": [{"role": "user", "content": prompt}],
     }
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         response = await client.post(
-            f"{OPENROUTER_BASE_URL}/chat/completions",
-            headers=_headers(),
+            f'{runtime["base_url"]}/chat/completions',
+            headers=_headers(api_key),
             json=payload,
         )
         response.raise_for_status()

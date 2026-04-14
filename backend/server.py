@@ -1,6 +1,7 @@
 import logging
 import os
 from pathlib import Path
+import asyncio
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
@@ -16,7 +17,9 @@ from routers.auth import router as auth_router
 from routers.equipment import router as equipment_router
 from routers.field_survey import router as field_survey_router
 from routers.heatmap import router as heatmap_router
+from routers.settings import router as settings_router
 from routers.underwriting import router as underwriting_router
+from services.equipment_scheduler import equipment_alert_scheduler
 from services.setup_service import create_indexes, seed_areas, seed_underwriting_templates
 
 logging.basicConfig(
@@ -32,6 +35,7 @@ app.include_router(underwriting_router)
 app.include_router(field_survey_router)
 app.include_router(equipment_router)
 app.include_router(heatmap_router)
+app.include_router(settings_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -47,8 +51,16 @@ async def startup_tasks():
     await seed_areas(db)
     await seed_underwriting_templates(db)
     await create_indexes(db)
+    app.state.equipment_alert_scheduler_task = asyncio.create_task(equipment_alert_scheduler(db))
 
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
+    scheduler_task = getattr(app.state, "equipment_alert_scheduler_task", None)
+    if scheduler_task:
+        scheduler_task.cancel()
+        try:
+            await scheduler_task
+        except asyncio.CancelledError:
+            pass
     client.close()

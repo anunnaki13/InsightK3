@@ -174,6 +174,7 @@ async def ai_assess_risk_item(risk_id: str, current_user: User = Depends(get_cur
         raise HTTPException(status_code=404, detail="Risk item not found")
 
     assessment = await assess_risk_item(
+        db=db,
         risk_title=item["title"],
         risk_description=item["description"],
         area=item["area_code"],

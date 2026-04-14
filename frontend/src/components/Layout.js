@@ -19,6 +19,7 @@ import {
   ShieldCheck,
   Sparkles,
   Siren,
+  SlidersHorizontal,
 } from 'lucide-react';
 
 const Layout = ({ children }) => {
@@ -38,6 +39,7 @@ const Layout = ({ children }) => {
     { name: 'Field Survey', path: '/field-risk-survey', icon: ClipboardList, hint: 'Survey lapangan', roles: ['admin', 'risk_officer', 'surveyor', 'management'] },
     { name: 'Equipment', path: '/emergency-equipment', icon: Siren, hint: 'Readiness tanggap darurat', roles: ['admin', 'risk_officer', 'surveyor', 'management'] },
     { name: 'Heatmap', path: '/risk-heatmap', icon: PanelsTopLeft, hint: 'Dashboard konsolidasi', roles: ['admin', 'auditor', 'risk_officer', 'management'] },
+    { name: 'Settings', path: '/settings', icon: SlidersHorizontal, hint: 'Konfigurasi AI & sistem', roles: ['admin'] },
   ].filter((item) => !item.roles || item.roles.includes(user?.role));
 
   const isActive = (path) => location.pathname === path;

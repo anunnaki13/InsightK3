@@ -4,7 +4,7 @@
 - Repository ini adalah baseline hasil migrasi dari `SMk3` ke repo kerja baru `InsightK3`.
 - Blueprint utama tetap di `INSIGHT_K3_BLUEPRINT_v2.md`.
 - Fokus awal adalah menjaga baseline existing tetap berjalan sambil memindahkan fondasi ke arsitektur v2 secara bertahap.
-- Status saat ini: fondasi backend modular sudah aktif, UI shell premium sudah aktif, modul A-E sudah aktif, attachment workflow modul baru sudah aktif, dan report PDF untuk Underwriting/Field Survey sudah aktif.
+- Status saat ini: fondasi backend modular sudah aktif, UI shell premium sudah aktif, modul A-E sudah aktif, attachment workflow modul baru sudah aktif, report PDF untuk Underwriting/Field Survey sudah aktif, scheduler equipment alert sudah aktif, dan admin AI settings OpenRouter sudah aktif.
 
 ## Delivery Principles
 - Kerja dilakukan bertahap, per fase, dengan perubahan yang kecil tapi lengkap.
@@ -30,16 +30,18 @@
 9. File/photo attachment handling completed for Underwriting and Field Survey.
 10. Audit document preview upgraded with Office-to-PDF conversion for operational review use.
 11. Report generation completed for Underwriting Survey and Field Survey.
+12. Daily equipment alert scheduler completed and deployed.
+13. Admin-only OpenRouter settings page and backend configuration endpoints completed.
 
 ## Active Gaps
-1. APScheduler-based daily alert cron for equipment has not been enabled yet.
-2. Seed `166` klausul perlu divalidasi secara operasional pada database aktif.
-3. Report generation belum merata ke semua modul baru.
-4. Underwriting Survey dan Emergency Equipment Readiness belum disesuaikan dengan template Excel baku operasional pengguna.
+1. Seed `166` klausul perlu divalidasi secara operasional pada database aktif.
+2. Report generation belum merata ke semua modul baru.
+3. Underwriting Survey dan Emergency Equipment Readiness belum disesuaikan dengan template Excel baku operasional pengguna.
+4. Knowledge base klausul perlu disinkronkan kembali dengan baseline `SMk3` bila memang ada konten yang tertinggal saat migrasi.
 
 ## Next Recommended Sequence
-1. Activate recurring equipment alert scheduler.
-2. Validate and, if needed, execute the corrected `166`-clause audit seed flow on the active dataset.
+1. Validate and, if needed, execute the corrected `166`-clause audit seed flow on the active dataset.
+2. Audit and restore missing clause knowledge base content from baseline `SMk3`.
 3. Move into template-driven upgrade for Underwriting Survey and Emergency Equipment Readiness based on the user's existing Excel forms.
 
 ## Immediate Deliverables

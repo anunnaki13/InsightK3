@@ -15,6 +15,7 @@ import UnderwritingPage from './pages/UnderwritingPage';
 import FieldSurveyPage from './pages/FieldSurveyPage';
 import EquipmentPage from './pages/EquipmentPage';
 import HeatmapPage from './pages/HeatmapPage';
+import SettingsPage from './pages/SettingsPage';
 import '@/App.css';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -185,6 +186,10 @@ function App() {
             <Route
               path="/risk-heatmap"
               element={user ? <HeatmapPage /> : <Navigate to="/auth" replace />}
+            />
+            <Route
+              path="/settings"
+              element={user?.role === 'admin' ? <SettingsPage /> : <Navigate to="/" replace />}
             />
           </Routes>
           <Toaster position="top-right" richColors />

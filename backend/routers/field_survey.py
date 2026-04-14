@@ -385,6 +385,17 @@ async def create_field_finding(data: FieldFindingCreate, current_user: User = De
     return FieldFinding(**finding_dict)
 
 
+@router.get("/field-survey/findings/overdue")
+async def get_overdue_field_findings(current_user: User = Depends(get_current_user)):
+    _ensure_can_read(current_user)
+    today = datetime.now(timezone.utc).date().isoformat()
+    items = await db.field_findings.find(
+        {"deadline": {"$lt": today}, "status": {"$ne": "closed"}},
+        {"_id": 0},
+    ).sort("deadline", 1).to_list(200)
+    return {"items": items}
+
+
 @router.get("/field-survey/findings/{finding_id}")
 async def get_field_finding(finding_id: str, current_user: User = Depends(get_current_user)):
     _ensure_can_read(current_user)
@@ -570,17 +581,6 @@ async def get_field_survey_dashboard(current_user: User = Depends(get_current_us
     ]
     areas = await db.field_findings.aggregate(pipeline).to_list(100)
     return {"areas": areas}
-
-
-@router.get("/field-survey/findings/overdue")
-async def get_overdue_field_findings(current_user: User = Depends(get_current_user)):
-    _ensure_can_read(current_user)
-    today = datetime.now(timezone.utc).date().isoformat()
-    items = await db.field_findings.find(
-        {"deadline": {"$lt": today}, "status": {"$ne": "closed"}},
-        {"_id": 0},
-    ).sort("deadline", 1).to_list(200)
-    return {"items": items}
 
 
 @router.post("/field-survey/surveys/{survey_id}/report")

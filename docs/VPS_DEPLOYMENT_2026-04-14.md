@@ -48,7 +48,7 @@ InsightK3 sudah berhasil dijalankan di VPS ini dengan service `systemd` terpisah
 
 ## Important Follow-up
 1. Ganti password admin awal segera setelah login pertama.
-2. Isi `OPENROUTER_API_KEY` pada `backend/.env` agar fitur AI aktif.
+2. Isi OpenRouter credential dari menu `Settings` sebagai role `admin`, atau gunakan `backend/.env` sebagai fallback bila setting database belum dibuat.
 3. Untuk mode preview saat ini, reverse proxy/domain/SSL tidak wajib; tambahkan hanya jika aplikasi akan dipakai publik secara permanen.
 4. Pertimbangkan hardening tambahan: firewall, auth MongoDB, dan Nginx bila mode penggunaan berubah dari preview ke public production.
 
@@ -57,3 +57,5 @@ InsightK3 sudah berhasil dijalankan di VPS ini dengan service `systemd` terpisah
 2. Dependency backend default terlalu berat untuk Python 3.10 VPS ini, sehingga dibuat file runtime khusus `backend/requirements-prod.txt`.
 3. Preview dokumen Office sekarang bergantung pada LibreOffice headless yang sudah dipasang di VPS untuk konversi ke PDF.
 4. Alur seed audit penuh sudah dibenahi di level kode, tetapi validasi penerapan `166` klausul pada data aktif masih perlu dilakukan secara terkontrol.
+5. Scheduler equipment alert sudah aktif di backend runtime dan berjalan saat startup lalu berulang harian.
+6. Konfigurasi OpenRouter sekarang dapat dikelola langsung dari aplikasi melalui menu `Settings` khusus admin.

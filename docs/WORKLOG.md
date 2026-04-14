@@ -45,3 +45,8 @@
 - Memasang LibreOffice headless pada VPS dan mengaktifkan preview Office-to-PDF di backend agar file Word/Excel/PowerPoint dapat dilihat konsisten dari aplikasi.
 - Mengimplementasikan report PDF untuk Underwriting Survey dan Field Survey, lalu menambahkan tombol download report pada UI kedua modul.
 - Melakukan deploy ulang service backend/frontend setelah perubahan preview dokumen dan report generation agar update terbaru langsung aktif di preview VPS.
+- Mengaktifkan scheduler harian equipment alert di backend runtime dengan initial sync saat startup dan run harian terjadwal.
+- Memperbaiki conflict urutan route pada modul Equipment dan Field Survey agar endpoint static seperti `alerts`, `expiring`, `overdue-inspection`, dan `findings/overdue` tidak lagi tertelan route dinamis berbasis ID.
+- Menambahkan menu `Settings` khusus admin untuk konfigurasi OpenRouter dari aplikasi, lengkap dengan verifikasi key, pilihan model, dan daftar model dari endpoint resmi OpenRouter.
+- Mengubah AI runtime agar membaca konfigurasi OpenRouter dari database aplikasi, dengan `.env` tetap menjadi fallback bila setting admin belum disimpan.
+- Melakukan deploy ulang backend/frontend setelah fitur scheduler dan admin AI settings aktif.

@@ -10,10 +10,10 @@ Dokumen ini adalah checkpoint resume singkat agar sesi berikutnya bisa langsung 
 - Status deploy VPS juga sudah ada dan didokumentasikan di `docs/VPS_DEPLOYMENT_2026-04-14.md`.
 
 ## Latest Completed Commits
+- `a488caa` Add document preview conversion and survey reports
 - `e854eb1` Clean legacy branding and add survey attachments
 - `c27512f` Add VPS deployment setup and runtime dependencies
-- `b7661e8` Build integrated heatmap and consolidated dashboard foundation
-- `e854eb1` adalah commit kerja terbaru yang sudah dipush saat checkpoint ini diperbarui.
+- `a488caa` adalah commit kerja terbaru yang sudah dipush saat checkpoint ini diperbarui.
 
 ## Completed Modules
 ### Core Platform
@@ -37,23 +37,25 @@ Dokumen ini adalah checkpoint resume singkat agar sesi berikutnya bisa langsung 
 ### Modul D — Emergency Equipment Readiness
 - Register equipment, inspeksi, readiness calculation, alert aktif, area summary, overdue inspection, dan expiring items sudah aktif.
 - Manual alert check endpoint juga sudah tersedia.
+- Scheduler harian alert equipment sekarang juga sudah aktif di backend runtime.
 
 ### Cross-Cutting Capability
 - Preview dokumen audit untuk PDF dan gambar sudah aktif.
 - Preview dokumen Office sekarang dikonversi ke PDF via LibreOffice headless agar bisa dilihat konsisten dari aplikasi.
 - Branding lama dari scaffold frontend sudah dibersihkan dari build dan source.
+- Menu `Settings` admin-only untuk OpenRouter API key dan model AI sudah aktif.
 
 ## Not Yet Completed
-- Scheduler harian untuk alert equipment
 - Validasi operasional seed audit penuh `166` klausul pada database aktif
 - Report/PDF generation untuk modul equipment dan dashboard konsolidasi
 - Penyesuaian field Underwriting Survey dan Emergency Equipment Readiness berdasarkan template Excel baku operasional
+- Sinkronisasi knowledge base klausul dengan baseline repo `SMk3`, karena sebagian konten knowledge base diduga belum ikut termigrasi
 - Hardening production lanjutan hanya bila aplikasi nantinya dipindahkan dari mode preview ke mode publik permanen
 
 ## Immediate Next Step
 Lanjut ke penyelesaian gap inti yang tersisa:
-- scheduler harian equipment alert
 - validasi seed audit `166` klausul pada data aktif
+- audit dan sinkronisasi knowledge base klausul dari baseline `SMk3`
 - report lanjutan untuk modul lain bila diperlukan
 - setelah itu baru masuk ke fase upgrade template-driven
 

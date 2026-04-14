@@ -153,6 +153,85 @@ async def create_emergency_equipment(
     return EmergencyEquipment(**equipment_dict)
 
 
+@router.get("/equipment/alerts")
+async def get_equipment_alerts(
+    severity: str | None = None,
+    is_acknowledged: bool | None = None,
+    current_user: User = Depends(get_current_user),
+):
+    _ensure_can_read(current_user)
+    query = {}
+    if severity:
+        query["severity"] = severity
+    if is_acknowledged is not None:
+        query["is_acknowledged"] = is_acknowledged
+    items = await db.equipment_alerts.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
+    return {"items": items}
+
+
+@router.put("/equipment/alerts/{alert_id}/acknowledge")
+async def acknowledge_equipment_alert(alert_id: str, current_user: User = Depends(get_current_user)):
+    _ensure_can_write(current_user)
+    result = await db.equipment_alerts.update_one(
+        {"id": alert_id},
+        {"$set": {"is_acknowledged": True, "acknowledged_by": current_user.id, "acknowledged_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Equipment alert not found")
+    return {"message": "Alert acknowledged"}
+
+
+@router.get("/equipment/expiring")
+async def get_expiring_equipment(days: int = Query(30, ge=1, le=365), current_user: User = Depends(get_current_user)):
+    _ensure_can_read(current_user)
+    cutoff = (datetime.now(timezone.utc).date()).isoformat()
+    window = (datetime.now(timezone.utc).date()).fromordinal(datetime.now(timezone.utc).date().toordinal() + days).isoformat()
+    items = await db.emergency_equipment.find(
+        {"is_active": True, "expiry_date": {"$gte": cutoff, "$lte": window}},
+        {"_id": 0},
+    ).sort("expiry_date", 1).to_list(200)
+    return {"items": items}
+
+
+@router.get("/equipment/overdue-inspection")
+async def get_overdue_equipment_inspection(current_user: User = Depends(get_current_user)):
+    _ensure_can_read(current_user)
+    today = datetime.now(timezone.utc).date().isoformat()
+    items = await db.emergency_equipment.find(
+        {"is_active": True, "next_inspection_date": {"$lt": today}},
+        {"_id": 0},
+    ).sort("next_inspection_date", 1).to_list(200)
+    return {"items": items}
+
+
+@router.post("/equipment/run-alert-check")
+async def run_equipment_alert_check(current_user: User = Depends(get_current_user)):
+    _ensure_can_write(current_user)
+    await run_daily_alert_check(db)
+    return {"message": "Equipment alert check completed"}
+
+
+@router.get("/equipment/map-data")
+async def get_equipment_map_data(current_user: User = Depends(get_current_user)):
+    _ensure_can_read(current_user)
+    items = await db.emergency_equipment.find({"is_active": True}, {"_id": 0}).to_list(1000)
+    return {
+        "items": [
+            {
+                "id": item["id"],
+                "code": item["equipment_code"],
+                "type": item["equipment_type"],
+                "area": item["area_code"],
+                "lat": item.get("gps_latitude"),
+                "lng": item.get("gps_longitude"),
+                "status": item["status"],
+                "readiness": item["readiness_percentage"],
+            }
+            for item in items
+        ]
+    }
+
+
 @router.get("/equipment/{equipment_id}", response_model=EmergencyEquipment)
 async def get_emergency_equipment_detail(equipment_id: str, current_user: User = Depends(get_current_user)):
     _ensure_can_read(current_user)
@@ -248,81 +327,3 @@ async def get_equipment_checklist_form(equipment_id: str, current_user: User = D
         "required_checks": equipment_meta["required_checks"],
     }
 
-
-@router.get("/equipment/alerts")
-async def get_equipment_alerts(
-    severity: str | None = None,
-    is_acknowledged: bool | None = None,
-    current_user: User = Depends(get_current_user),
-):
-    _ensure_can_read(current_user)
-    query = {}
-    if severity:
-        query["severity"] = severity
-    if is_acknowledged is not None:
-        query["is_acknowledged"] = is_acknowledged
-    items = await db.equipment_alerts.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
-    return {"items": items}
-
-
-@router.put("/equipment/alerts/{alert_id}/acknowledge")
-async def acknowledge_equipment_alert(alert_id: str, current_user: User = Depends(get_current_user)):
-    _ensure_can_write(current_user)
-    result = await db.equipment_alerts.update_one(
-        {"id": alert_id},
-        {"$set": {"is_acknowledged": True, "acknowledged_by": current_user.id, "acknowledged_at": datetime.now(timezone.utc).isoformat()}},
-    )
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Equipment alert not found")
-    return {"message": "Alert acknowledged"}
-
-
-@router.get("/equipment/expiring")
-async def get_expiring_equipment(days: int = Query(30, ge=1, le=365), current_user: User = Depends(get_current_user)):
-    _ensure_can_read(current_user)
-    cutoff = (datetime.now(timezone.utc).date()).isoformat()
-    window = (datetime.now(timezone.utc).date()).fromordinal(datetime.now(timezone.utc).date().toordinal() + days).isoformat()
-    items = await db.emergency_equipment.find(
-        {"is_active": True, "expiry_date": {"$gte": cutoff, "$lte": window}},
-        {"_id": 0},
-    ).sort("expiry_date", 1).to_list(200)
-    return {"items": items}
-
-
-@router.get("/equipment/overdue-inspection")
-async def get_overdue_equipment_inspection(current_user: User = Depends(get_current_user)):
-    _ensure_can_read(current_user)
-    today = datetime.now(timezone.utc).date().isoformat()
-    items = await db.emergency_equipment.find(
-        {"is_active": True, "next_inspection_date": {"$lt": today}},
-        {"_id": 0},
-    ).sort("next_inspection_date", 1).to_list(200)
-    return {"items": items}
-
-
-@router.post("/equipment/run-alert-check")
-async def run_equipment_alert_check(current_user: User = Depends(get_current_user)):
-    _ensure_can_write(current_user)
-    await run_daily_alert_check(db)
-    return {"message": "Equipment alert check completed"}
-
-
-@router.get("/equipment/map-data")
-async def get_equipment_map_data(current_user: User = Depends(get_current_user)):
-    _ensure_can_read(current_user)
-    items = await db.emergency_equipment.find({"is_active": True}, {"_id": 0}).to_list(1000)
-    return {
-        "items": [
-            {
-                "id": item["id"],
-                "code": item["equipment_code"],
-                "type": item["equipment_type"],
-                "area": item["area_code"],
-                "lat": item.get("gps_latitude"),
-                "lng": item.get("gps_longitude"),
-                "status": item["status"],
-                "readiness": item["readiness_percentage"],
-            }
-            for item in items
-        ]
-    }
