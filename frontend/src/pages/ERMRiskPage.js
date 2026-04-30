@@ -207,7 +207,7 @@ const ERMRiskPage = () => {
           <Card className="overflow-hidden rounded-[30px] border-0 bg-[linear-gradient(135deg,#3a1c1c_0%,#63332b_58%,#87514a_100%)] text-white shadow-[0_32px_90px_rgba(58,28,28,0.24)]">
             <CardContent className="p-7 md:p-8">
               <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-rose-100/75">ERM Risk Register</p>
-              <h1 className="mt-3 text-4xl font-extrabold leading-tight md:text-5xl">Mulai memusatkan risk register operasional di dalam InsightK3.</h1>
+              <h1 className="mt-3 text-4xl font-extrabold leading-tight md:text-5xl">Risk register operasional untuk pemantauan risiko unit.</h1>
               <p className="mt-4 max-w-2xl text-sm leading-6 text-rose-50/80 md:text-base">
                 Fondasi modul A sudah aktif: master area, scoring risiko, AI-assisted assessment, agregasi per area, dan register risiko dasar.
               </p>

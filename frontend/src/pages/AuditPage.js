@@ -71,6 +71,12 @@ const AuditPage = () => {
     }
   }, [auditResult]);
 
+  useEffect(() => {
+    if (auditorAssessment.auditor_status === 'confirm' && auditorAssessment.agreed_date) {
+      setAuditorAssessment((prev) => ({ ...prev, agreed_date: '' }));
+    }
+  }, [auditorAssessment.auditor_status, auditorAssessment.agreed_date]);
+
   useEffect(() => () => {
     if (previewDoc?.previewUrl) {
       window.URL.revokeObjectURL(previewDoc.previewUrl);
@@ -874,46 +880,48 @@ const AuditPage = () => {
                         </div>
 
                         {/* Due Date */}
-                        <div className="space-y-2">
-                          <Label className="text-sm font-semibold text-slate-900">
-                            Tanggal Kesepakatan Penyelesaian {['non-confirm-major', 'non-confirm-minor'].includes(auditorAssessment.auditor_status) && <span className="text-red-500">*</span>}
-                          </Label>
-                          <Popover>
-                            <PopoverTrigger asChild>
-                              <Button
-                                variant="outline"
-                                className="w-full justify-start text-left font-normal"
-                                data-testid="date-picker-button"
-                              >
-                                <CalendarIcon className="mr-2 h-4 w-4" />
-                                {auditorAssessment.agreed_date ? (
-                                  format(new Date(auditorAssessment.agreed_date), 'PPP', { locale: idLocale })
-                                ) : (
-                                  <span className="text-slate-500">Pilih tanggal...</span>
-                                )}
-                              </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0" align="start">
-                              <Calendar
-                                mode="single"
-                                selected={auditorAssessment.agreed_date ? new Date(auditorAssessment.agreed_date) : undefined}
-                                onSelect={(date) => {
-                                  if (date) {
-                                    setAuditorAssessment(prev => ({ 
-                                      ...prev, 
-                                      agreed_date: date.toISOString().split('T')[0] 
-                                    }));
-                                  }
-                                }}
-                                initialFocus
-                                locale={idLocale}
-                              />
-                            </PopoverContent>
-                          </Popover>
-                          <p className="text-xs text-slate-500">
-                            Wajib diisi hanya untuk status non-confirm minor atau non-confirm major.
-                          </p>
-                        </div>
+                        {['non-confirm-major', 'non-confirm-minor'].includes(auditorAssessment.auditor_status) && (
+                          <div className="space-y-2">
+                            <Label className="text-sm font-semibold text-slate-900">
+                              Tanggal Kesepakatan Penyelesaian <span className="text-red-500">*</span>
+                            </Label>
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  className="w-full justify-start text-left font-normal"
+                                  data-testid="date-picker-button"
+                                >
+                                  <CalendarIcon className="mr-2 h-4 w-4" />
+                                  {auditorAssessment.agreed_date ? (
+                                    format(new Date(auditorAssessment.agreed_date), 'PPP', { locale: idLocale })
+                                  ) : (
+                                    <span className="text-slate-500">Pilih tanggal...</span>
+                                  )}
+                                </Button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-auto p-0" align="start">
+                                <Calendar
+                                  mode="single"
+                                  selected={auditorAssessment.agreed_date ? new Date(auditorAssessment.agreed_date) : undefined}
+                                  onSelect={(date) => {
+                                    if (date) {
+                                      setAuditorAssessment(prev => ({ 
+                                        ...prev, 
+                                        agreed_date: date.toISOString().split('T')[0] 
+                                      }));
+                                    }
+                                  }}
+                                  initialFocus
+                                  locale={idLocale}
+                                />
+                              </PopoverContent>
+                            </Popover>
+                            <p className="text-xs text-slate-500">
+                              Wajib diisi untuk non-confirm dan akan otomatis dibuatkan item rekomendasi.
+                            </p>
+                          </div>
+                        )}
 
                         {/* Save Button */}
                         <div className="pt-3 border-t flex justify-end">

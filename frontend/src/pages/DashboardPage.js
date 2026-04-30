@@ -122,8 +122,8 @@ const DashboardPage = () => {
             <CardContent className="p-7 md:p-8">
               <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
                 <div className="max-w-2xl">
-                  <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-emerald-100/75">Executive Snapshot</p>
-                  <h1 className="mt-3 text-4xl font-extrabold leading-tight md:text-5xl">Command center untuk audit keselamatan dan kepatuhan SMK3.</h1>
+                  <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-emerald-100/75">Audit Overview</p>
+                  <h1 className="mt-3 text-4xl font-extrabold leading-tight md:text-5xl">Ringkasan audit keselamatan dan kepatuhan SMK3.</h1>
                   <p className="mt-4 max-w-xl text-sm leading-6 text-emerald-50/80 md:text-base">
                     Pantau progress klausul, keputusan auditor, dan evidence readiness dalam satu workspace operasional yang terpusat.
                   </p>

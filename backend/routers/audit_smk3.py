@@ -45,6 +45,9 @@ from services.risk_scoring import enrich_risk_item, generate_risk_code
 router = APIRouter(prefix="/api")
 
 
+AUTO_RECOMMENDATION_SOURCE = "auto_auditor_assessment"
+
+
 def _parse_datetime_fields(items: list[dict], *fields: str) -> list[dict]:
     for item in items:
         for field in fields:
@@ -561,6 +564,11 @@ async def update_auditor_assessment(
             status_code=400,
             detail="Tanggal kesepakatan penyelesaian wajib diisi untuk non-confirm major/minor.",
         )
+    if requires_agreed_date and not assessment.auditor_notes.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Catatan dan rekomendasi auditor wajib diisi untuk non-confirm major/minor.",
+        )
 
     update_data = {
         "auditor_status": assessment.auditor_status,
@@ -572,13 +580,48 @@ async def update_auditor_assessment(
 
     await db.audit_results.update_one({"clause_id": clause_id}, {"$set": update_data})
 
+    clause = await db.clauses.find_one({"id": clause_id}, {"_id": 0})
+
     if assessment.auditor_status in ("non-confirm-major", "non-confirm-minor"):
+        recommendation_payload = {
+            "clause_id": clause_id,
+            "recommendation_text": assessment.auditor_notes.strip(),
+            "deadline": datetime.fromisoformat(agreed_date_value).isoformat(),
+            "status": "pending",
+            "source": AUTO_RECOMMENDATION_SOURCE,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "updated_by": current_user.id,
+        }
+        existing_recommendation = await db.recommendations.find_one(
+            {"clause_id": clause_id, "source": AUTO_RECOMMENDATION_SOURCE},
+            {"_id": 0},
+        )
+        if existing_recommendation:
+            await db.recommendations.update_one(
+                {"id": existing_recommendation["id"]},
+                {"$set": recommendation_payload},
+            )
+        else:
+            recommendation = Recommendation(
+                clause_id=clause_id,
+                recommendation_text=assessment.auditor_notes.strip(),
+                deadline=datetime.fromisoformat(agreed_date_value),
+                status="pending",
+                created_by=current_user.id,
+            )
+            recommendation_dict = recommendation.model_dump()
+            recommendation_dict["created_at"] = recommendation_dict["created_at"].isoformat()
+            recommendation_dict["deadline"] = recommendation_dict["deadline"].isoformat()
+            recommendation_dict["source"] = AUTO_RECOMMENDATION_SOURCE
+            recommendation_dict["updated_at"] = datetime.now(timezone.utc).isoformat()
+            recommendation_dict["updated_by"] = current_user.id
+            await db.recommendations.insert_one(recommendation_dict)
+
         existing_risk = await db.risk_items.find_one(
             {"related_clause_ids": clause_id, "status": {"$ne": "Archived"}},
             {"_id": 0},
         )
         if not existing_risk:
-            clause = await db.clauses.find_one({"id": clause_id}, {"_id": 0})
             sequence = await db.risk_items.count_documents({"area_code": "COMMON"}) + 1
             draft_risk = {
                 "id": str(uuid.uuid4()),
@@ -605,6 +648,23 @@ async def update_auditor_assessment(
             }
             draft_risk = enrich_risk_item(draft_risk)
             await db.risk_items.insert_one(draft_risk)
+    else:
+        existing_recommendation = await db.recommendations.find_one(
+            {"clause_id": clause_id, "source": AUTO_RECOMMENDATION_SOURCE, "status": {"$ne": "completed"}},
+            {"_id": 0},
+        )
+        if existing_recommendation:
+            await db.recommendations.update_one(
+                {"id": existing_recommendation["id"]},
+                {
+                    "$set": {
+                        "status": "completed",
+                        "completed_at": datetime.now(timezone.utc).isoformat(),
+                        "updated_at": datetime.now(timezone.utc).isoformat(),
+                        "updated_by": current_user.id,
+                    }
+                },
+            )
 
     return {"message": "Auditor assessment saved successfully"}
 

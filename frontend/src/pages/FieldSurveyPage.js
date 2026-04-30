@@ -319,7 +319,7 @@ const FieldSurveyPage = () => {
           <Card className="overflow-hidden rounded-[30px] border-0 bg-[linear-gradient(135deg,#211c3d_0%,#384b7a_58%,#5a76a8_100%)] text-white shadow-[0_32px_90px_rgba(33,28,61,0.24)]">
             <CardContent className="p-7 md:p-8">
               <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-indigo-100/75">Module C</p>
-              <h1 className="mt-3 text-4xl font-extrabold leading-tight md:text-5xl">Field survey sekarang siap dipakai untuk patrol dan quick reporting.</h1>
+              <h1 className="mt-3 text-4xl font-extrabold leading-tight md:text-5xl">Field survey untuk patrol, temuan, dan tindak lanjut lapangan.</h1>
               <p className="mt-4 max-w-2xl text-sm leading-6 text-indigo-50/80 md:text-base">
                 Survey lapangan, temuan operasional, monitoring overdue, dan auto-link severity tinggi ke ERM sudah aktif dalam satu workspace.
               </p>

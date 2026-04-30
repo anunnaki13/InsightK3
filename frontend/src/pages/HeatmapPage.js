@@ -91,9 +91,9 @@ const HeatmapPage = () => {
           <Card className="overflow-hidden rounded-[30px] border-0 bg-[linear-gradient(135deg,#102542_0%,#1b4965_58%,#2c6e91_100%)] text-white shadow-[0_32px_90px_rgba(16,37,66,0.24)]">
             <CardContent className="p-7 md:p-8">
               <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-sky-100/75">Module E</p>
-              <h1 className="mt-3 text-4xl font-extrabold leading-tight md:text-5xl">Dashboard konsolidasi risiko unit sekarang mulai terbentuk.</h1>
+              <h1 className="mt-3 text-4xl font-extrabold leading-tight md:text-5xl">Dashboard konsolidasi risiko dan readiness unit.</h1>
               <p className="mt-4 max-w-2xl text-sm leading-6 text-sky-50/80 md:text-base">
-                Heatmap area, KPI unit, risk matrix, top risks, alerts, dan action items sekarang ditarik dari modul audit, ERM, survey, dan equipment.
+                Heatmap area, KPI unit, risk matrix, top risks, alerts, dan action items ditarik dari modul audit, ERM, survey, dan equipment.
               </p>
             </CardContent>
           </Card>

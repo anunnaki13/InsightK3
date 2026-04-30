@@ -67,8 +67,8 @@ const AuthPage = () => {
               </div>
               <div className="rounded-[24px] border border-white/14 bg-white/10 p-5 backdrop-blur-sm">
                 <Sparkles className="h-6 w-6 text-emerald-50" />
-                <p className="mt-4 text-lg font-bold">Premium Workspace</p>
-                <p className="mt-2 text-sm text-emerald-50/74">Dirancang untuk penggunaan operasional dan review manajemen.</p>
+                <p className="mt-4 text-lg font-bold">Management Review</p>
+                <p className="mt-2 text-sm text-emerald-50/74">Disiapkan untuk penggunaan operasional dan forum manajemen.</p>
               </div>
             </div>
           </CardContent>

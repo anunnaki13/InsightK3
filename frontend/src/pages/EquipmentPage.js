@@ -228,7 +228,7 @@ const EquipmentPage = () => {
           <Card className="overflow-hidden rounded-[30px] border-0 bg-[linear-gradient(135deg,#3d2614_0%,#7a4b28_58%,#a36b3a_100%)] text-white shadow-[0_32px_90px_rgba(61,38,20,0.24)]">
             <CardContent className="p-7 md:p-8">
               <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-amber-100/75">Module D</p>
-              <h1 className="mt-3 text-4xl font-extrabold leading-tight md:text-5xl">Emergency equipment readiness sekarang punya fondasi inventory dan alert.</h1>
+              <h1 className="mt-3 text-4xl font-extrabold leading-tight md:text-5xl">Monitoring kesiapan emergency equipment dan alert operasional.</h1>
               <p className="mt-4 max-w-2xl text-sm leading-6 text-amber-50/80 md:text-base">
                 Register alat, inspeksi periodik, readiness calculation, area summary, dan alert aktif sudah berjalan dalam satu workspace.
               </p>

@@ -336,7 +336,7 @@ const UnderwritingPage = () => {
           <Card className="overflow-hidden rounded-[30px] border-0 bg-[linear-gradient(135deg,#132a13_0%,#235347_58%,#2f6f6d_100%)] text-white shadow-[0_32px_90px_rgba(19,42,19,0.24)]">
             <CardContent className="p-7 md:p-8">
               <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-emerald-100/75">Module B</p>
-              <h1 className="mt-3 text-4xl font-extrabold leading-tight md:text-5xl">Underwriting survey sekarang sudah punya fondasi operasional.</h1>
+              <h1 className="mt-3 text-4xl font-extrabold leading-tight md:text-5xl">Workspace underwriting survey untuk review risiko lapangan.</h1>
               <p className="mt-4 max-w-2xl text-sm leading-6 text-emerald-50/80 md:text-base">
                 Digitalisasi survey, generate checklist template, auto-scoring per kategori, dan integrasi awal ke ERM untuk temuan kritikal sudah aktif.
               </p>
