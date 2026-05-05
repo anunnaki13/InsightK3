@@ -12,6 +12,8 @@ DEFAULT_OPENROUTER_BASE_URL = os.environ.get("OPENROUTER_BASE_URL", "https://ope
 DEFAULT_MODEL_ANALYSIS = os.environ.get("OPENROUTER_MODEL_ANALYSIS", "google/gemini-2.0-flash-001")
 DEFAULT_MODEL_RISK = os.environ.get("OPENROUTER_MODEL_RISK", "anthropic/claude-3.5-haiku")
 DEFAULT_MODEL_REPORT = os.environ.get("OPENROUTER_MODEL_REPORT", "google/gemini-2.0-flash-001")
+DEFAULT_STT_MODEL = os.environ.get("OPENROUTER_STT_MODEL", "openai/whisper-large-v3")
+DEFAULT_PDF_ENGINE = os.environ.get("OPENROUTER_PDF_ENGINE", "mistral-ocr")
 
 
 def _headers(api_key: str) -> dict[str, str]:
@@ -113,6 +115,93 @@ def _encode_file_to_base64(file_bytes: bytes) -> str:
     return base64.b64encode(file_bytes).decode("utf-8")
 
 
+def _truncate_document_text(value: str, limit: int = 12000) -> str:
+    cleaned = " ".join(value.split())
+    if len(cleaned) <= limit:
+        return cleaned
+    return cleaned[:limit].rstrip() + "... [truncated]"
+
+
+def _data_url(mime_type: str, file_bytes: bytes) -> str:
+    return f"data:{mime_type};base64,{_encode_file_to_base64(file_bytes)}"
+
+
+def _looks_like_pdf(file_bytes: bytes) -> bool:
+    return file_bytes.lstrip().startswith(b"%PDF-")
+
+
+def _audio_format(filename: str, mime_type: str) -> str | None:
+    normalized = (filename.rsplit(".", 1)[-1] if "." in filename else "").lower()
+    if normalized in {"wav", "mp3", "aiff", "aac", "ogg", "flac", "m4a"}:
+        return normalized
+
+    mime_map = {
+        "audio/wav": "wav",
+        "audio/x-wav": "wav",
+        "audio/mpeg": "mp3",
+        "audio/mp3": "mp3",
+        "audio/aiff": "aiff",
+        "audio/x-aiff": "aiff",
+        "audio/aac": "aac",
+        "audio/ogg": "ogg",
+        "audio/flac": "flac",
+        "audio/x-flac": "flac",
+        "audio/mp4": "m4a",
+        "audio/x-m4a": "m4a",
+    }
+    return mime_map.get(mime_type)
+
+
+def _is_audio_document(filename: str, mime_type: str) -> bool:
+    return bool(_audio_format(filename, mime_type))
+
+
+async def _transcribe_audio(api_key: str, filename: str, mime_type: str, file_bytes: bytes) -> str:
+    audio_format = _audio_format(filename, mime_type)
+    if not audio_format:
+        return ""
+
+    payload = {
+        "model": DEFAULT_STT_MODEL,
+        "input_audio": {
+            "data": _encode_file_to_base64(file_bytes),
+            "format": audio_format,
+        },
+        "language": "id",
+    }
+
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        response = await client.post(
+            f"{DEFAULT_OPENROUTER_BASE_URL}/audio/transcriptions",
+            headers=_headers(api_key),
+            json=payload,
+        )
+        response.raise_for_status()
+        data = response.json() or {}
+        return (data.get("text") or "").strip()
+
+
+async def _prepare_documents_for_analysis(api_key: str, documents: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    prepared: list[dict[str, Any]] = []
+    for doc in documents:
+        filename = doc.get("filename", "unknown")
+        mime_type = doc.get("mime_type", "application/octet-stream")
+        content = doc.get("content", b"")
+        extracted_text = (doc.get("extracted_text") or "").strip()
+
+        item = dict(doc)
+
+        if _is_audio_document(filename, mime_type) and content and not extracted_text:
+            try:
+                item["extracted_text"] = await _transcribe_audio(api_key, filename, mime_type, content)
+            except Exception as exc:
+                item["audio_transcription_error"] = str(exc)
+
+        prepared.append(item)
+
+    return prepared
+
+
 def _build_analysis_content(
     clause_title: str,
     clause_description: str,
@@ -132,6 +221,7 @@ def _build_analysis_content(
                 f"DESKRIPSI: {clause_description}\n\n"
                 "KNOWLEDGE BASE (dokumen/evidence yang seharusnya ada):\n"
                 f"{knowledge_base}\n\n"
+                "Jika knowledge base memuat blok 'ACUAN PRIMER', jadikan blok itu sebagai acuan pertama sebelum bagian lain.\n\n"
                 f"{context_block}"
                 "Nilai kesesuaian dokumen yang diupload dengan dokumen yang diminta.\n\n"
                 "Jangan menjadikan tahun, tanggal, atau nomor dokumen sebagai penentu utama.\n"
@@ -150,6 +240,7 @@ def _build_analysis_content(
         filename = doc.get("filename", "unknown")
         mime_type = doc.get("mime_type", "application/octet-stream")
         binary = doc.get("content", b"")
+        extracted_text = (doc.get("extracted_text") or "").strip()
 
         if mime_type.startswith("image/") and binary:
             content.append(
@@ -160,10 +251,60 @@ def _build_analysis_content(
             )
             continue
 
+        if mime_type == "application/pdf" and binary and _looks_like_pdf(binary):
+            content.append(
+                {
+                    "type": "file",
+                    "file": {
+                        "filename": filename,
+                        "file_data": _data_url(mime_type, binary),
+                    },
+                }
+            )
+            if extracted_text:
+                content.append(
+                    {
+                        "type": "text",
+                        "text": (
+                            f"[Dokumen PDF: {filename} | ukuran: {len(binary)} bytes]\n"
+                            f"EKSTRAK TEKS LOKAL TAMBAHAN:\n{_truncate_document_text(extracted_text, 6000)}"
+                        ),
+                    }
+            )
+            continue
+
+        if mime_type == "application/pdf" and binary and not _looks_like_pdf(binary):
+            content.append(
+                {
+                    "type": "text",
+                    "text": (
+                        f"[Dokumen: {filename} | MIME: {mime_type} | ukuran: {len(binary)} bytes]\n"
+                        "File diberi label PDF tetapi struktur binernya bukan PDF valid. "
+                        "Jangan anggap isi dokumen terbaca; nilai hanya dari nama file dan evidence lain."
+                    ),
+                }
+            )
+            continue
+
+        if extracted_text:
+            content.append(
+                {
+                    "type": "text",
+                    "text": (
+                        f"[Dokumen: {filename} | MIME: {mime_type} | ukuran: {len(binary)} bytes]\n"
+                        f"ISI DOKUMEN TERBACA:\n{_truncate_document_text(extracted_text)}"
+                    ),
+                }
+            )
+            continue
+
         content.append(
             {
                 "type": "text",
-                "text": f"[Dokumen: {filename} | MIME: {mime_type} | ukuran: {len(binary)} bytes]",
+                "text": (
+                    f"[Dokumen: {filename} | MIME: {mime_type} | ukuran: {len(binary)} bytes]\n"
+                    "Isi dokumen tidak berhasil diekstrak otomatis. Nilai hanya dari metadata ini jika tidak ada dokumen lain."
+                ),
             }
         )
 
@@ -234,6 +375,7 @@ async def analyze_document_evidence(
     runtime = await get_openrouter_runtime_settings(db)
     api_key = runtime["api_key"]
     _ensure_api_key(api_key)
+    prepared_documents = await _prepare_documents_for_analysis(api_key, documents)
 
     payload = {
         "model": runtime["model"] or DEFAULT_MODEL_ANALYSIS,
@@ -245,9 +387,17 @@ async def analyze_document_evidence(
                     clause_title=clause_title,
                     clause_description=clause_description,
                     knowledge_base=knowledge_base,
-                    documents=documents,
+                    documents=prepared_documents,
                     additional_context=additional_context,
                 ),
+            }
+        ],
+        "plugins": [
+            {
+                "id": "file-parser",
+                "pdf": {
+                    "engine": DEFAULT_PDF_ENGINE,
+                },
             }
         ],
     }
@@ -258,7 +408,11 @@ async def analyze_document_evidence(
             headers=_headers(api_key),
             json=payload,
         )
-        response.raise_for_status()
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            detail = exc.response.text if exc.response is not None else str(exc)
+            raise RuntimeError(f"OpenRouter analysis request failed: {detail}") from exc
 
     return _parse_analysis_response(_extract_message_content(response.json()))
 

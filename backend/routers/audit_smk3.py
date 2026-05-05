@@ -3,7 +3,9 @@ import io
 import logging
 import mimetypes
 import os
+import shutil
 import subprocess
+import sys
 import tempfile
 import uuid
 import zipfile
@@ -71,6 +73,40 @@ def _get_extension(filename: str | None) -> str:
     return Path(filename or "").suffix.lower()
 
 
+def _looks_like_pdf(content: bytes) -> bool:
+    return content.lstrip().startswith(b"%PDF-")
+
+
+def _looks_like_ole_office(content: bytes) -> bool:
+    return content.startswith(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1")
+
+
+def _looks_like_zip_container(content: bytes) -> bool:
+    return content.startswith((b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08"))
+
+
+def _is_audio_document(filename: str | None, mime_type: str | None) -> bool:
+    extension = _get_extension(filename)
+    if extension in {".mp3", ".wav", ".m4a", ".ogg", ".flac", ".aac", ".aiff", ".wma"}:
+        return True
+
+    resolved = _resolve_mime_type(filename, mime_type)
+    return resolved.startswith("audio/")
+
+
+def _is_image_document(filename: str | None, mime_type: str | None) -> bool:
+    extension = _get_extension(filename)
+    if extension in {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".tif", ".tiff"}:
+        return True
+
+    resolved = _resolve_mime_type(filename, mime_type)
+    return resolved.startswith("image/")
+
+
+def _is_effectively_empty_binary(content: bytes) -> bool:
+    return bool(content) and not content.strip(b"\x00")
+
+
 def _is_office_document(filename: str | None, mime_type: str | None) -> bool:
     extension = _get_extension(filename)
     if extension in {".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".rtf", ".odt", ".ods", ".odp"}:
@@ -93,6 +129,9 @@ def _is_office_document(filename: str | None, mime_type: str | None) -> bool:
 
 def _convert_office_to_pdf(content: bytes, filename: str) -> bytes:
     extension = _get_extension(filename) or ".bin"
+    office_binary = shutil.which("libreoffice") or shutil.which("soffice")
+    if not office_binary:
+        raise RuntimeError("LibreOffice/soffice is not installed on the server")
 
     with tempfile.TemporaryDirectory(prefix="insightk3-office-preview-") as workdir:
         input_path = Path(workdir) / f"source{extension}"
@@ -104,7 +143,7 @@ def _convert_office_to_pdf(content: bytes, filename: str) -> bytes:
 
         profile_uri = profile_dir.resolve().as_uri()
         command = [
-            "libreoffice",
+            office_binary,
             "--headless",
             f"-env:UserInstallation={profile_uri}",
             "--convert-to",
@@ -122,6 +161,67 @@ def _convert_office_to_pdf(content: bytes, filename: str) -> bytes:
             raise RuntimeError("Converted PDF was not produced")
 
         return pdf_path.read_bytes()
+
+
+def _extract_pdf_text(content: bytes) -> str:
+    with tempfile.TemporaryDirectory(prefix="insightk3-pdf-text-") as workdir:
+        pdf_path = Path(workdir) / "source.pdf"
+        txt_path = Path(workdir) / "source.txt"
+        pdf_path.write_bytes(content)
+
+        command = [
+            "pdftotext",
+            "-layout",
+            str(pdf_path),
+            str(txt_path),
+        ]
+        result = subprocess.run(command, capture_output=True, text=True, timeout=120)
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr.strip() or result.stdout.strip() or "pdftotext failed")
+        if not txt_path.exists():
+            return ""
+
+        return txt_path.read_text(encoding="utf-8", errors="ignore")
+
+
+def _extract_document_text(content: bytes, filename: str | None, mime_type: str | None) -> str:
+    resolved_mime_type = _resolve_mime_type(filename, mime_type)
+    extension = _get_extension(filename)
+    try:
+        if resolved_mime_type.startswith("text/") or extension in {".txt", ".md", ".csv", ".log"}:
+            return content.decode("utf-8", errors="ignore")
+
+        if extension == ".pdf" or resolved_mime_type == "application/pdf":
+            if not _looks_like_pdf(content):
+                logging.warning(
+                    "Skipping PDF text extraction for %s because file signature is not a valid PDF",
+                    filename or "document",
+                )
+                return ""
+            return _extract_pdf_text(content)
+
+        if _is_office_document(filename, mime_type):
+            if extension in {".docx", ".xlsx", ".pptx", ".odt", ".ods", ".odp"} and not _looks_like_zip_container(content):
+                logging.warning(
+                    "Skipping Office conversion for %s because ZIP-based document signature is invalid",
+                    filename or "document",
+                )
+                return ""
+            if extension in {".doc", ".xls", ".ppt"} and not _looks_like_ole_office(content):
+                logging.warning(
+                    "Skipping legacy Office conversion for %s because OLE document signature is invalid",
+                    filename or "document",
+                )
+                return ""
+            pdf_bytes = _convert_office_to_pdf(content, filename or "document")
+            return _extract_pdf_text(pdf_bytes)
+
+        if _is_image_document(filename, mime_type) or _is_audio_document(filename, mime_type):
+            return ""
+    except Exception as exc:
+        logging.warning("Automatic text extraction failed for %s: %s", filename or "document", exc)
+
+    return ""
 
 
 @router.get("/criteria", response_model=List[AuditCriteria])
@@ -213,6 +313,23 @@ async def upload_document(
 
     content = await file.read()
     resolved_mime_type = _resolve_mime_type(file.filename, file.content_type)
+
+    if not content:
+        raise HTTPException(status_code=400, detail="File kosong dan tidak dapat diproses")
+
+    if _is_effectively_empty_binary(content):
+        raise HTTPException(
+            status_code=400,
+            detail="File terupload tetapi isinya kosong/korup. Silakan ekspor ulang lalu upload kembali.",
+        )
+
+    if resolved_mime_type == "application/pdf" or _get_extension(file.filename) == ".pdf":
+        if not _looks_like_pdf(content):
+            raise HTTPException(
+                status_code=400,
+                detail="File diberi ekstensi PDF tetapi struktur filenya bukan PDF valid. Silakan simpan/scan ulang sebagai PDF.",
+            )
+
     file_id = fs.put(content, filename=file.filename, content_type=resolved_mime_type)
 
     doc = DocumentUpload(
@@ -492,11 +609,18 @@ async def analyze_clause(clause_id: str, current_user: User = Depends(get_curren
         documents_for_ai = []
         for doc in documents:
             file_data = fs.get(ObjectId(doc["file_id"]))
+            file_bytes = file_data.read()
+            extracted_text = _extract_document_text(
+                content=file_bytes,
+                filename=doc.get("filename"),
+                mime_type=doc.get("mime_type"),
+            )
             documents_for_ai.append(
                 {
                     "filename": doc["filename"],
                     "mime_type": doc["mime_type"],
-                    "content": file_data.read(),
+                    "content": file_bytes,
+                    "extracted_text": extracted_text,
                 }
             )
 
@@ -1002,7 +1126,7 @@ async def seed_initial_data(current_user: User = Depends(get_current_user)):
 
     backend_dir = os.path.dirname(os.path.dirname(__file__))
     result = subprocess.run(
-        ["python3", "seed_full_audit_data.py"],
+        [sys.executable, "seed_full_audit_data.py"],
         cwd=backend_dir,
         capture_output=True,
         text=True,

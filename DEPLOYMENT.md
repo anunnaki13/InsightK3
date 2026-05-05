@@ -2,6 +2,28 @@
 
 Panduan deployment aplikasi SMK3 Audit ke production environment.
 
+## Current VPS Runtime Reference
+
+Implementasi yang sedang dipakai saat ini berjalan dengan pola berikut:
+
+- frontend: `http://<host>:3131`
+- backend API: `http://127.0.0.1:8001`
+- MongoDB: service `mongod`
+- frontend service: `insightk3-frontend.service`
+- backend service: `insightk3-backend.service`
+
+Catatan:
+- AI settings dikelola dari database melalui menu admin, dengan `.env` sebagai fallback.
+- Evidence Office memerlukan LibreOffice headless.
+- Evidence PDF text extraction memerlukan `pdftotext`.
+
+Install dependency sistem:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y poppler-utils libreoffice-core libreoffice-writer libreoffice-calc libreoffice-impress
+```
+
 ## 📋 Pre-Deployment Checklist
 
 Sebelum deployment ke production, pastikan:

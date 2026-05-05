@@ -26,6 +26,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 ROOT_DIR = Path(__file__).parent
 REPO_ROOT = ROOT_DIR.parent
 SOURCE_FILE = REPO_ROOT / "knowledge-base-smk3-166-kriteria.md"
+PRIMARY_SOURCE_FILE = REPO_ROOT / "knowledge-base-pp50-interpretasi-primer.md"
 
 load_dotenv(ROOT_DIR / ".env")
 
@@ -195,8 +196,62 @@ def parse_markdown_clauses(markdown: str) -> dict[str, dict[str, str | list[str]
     return parsed
 
 
-def build_knowledge_base(entry: dict[str, str | list[str]]) -> str:
+def parse_primary_markdown_clauses(markdown: str) -> dict[str, dict[str, str]]:
+    pattern = re.compile(r"^####\s+(\d+\.\d+\.\d+)\s*$", re.MULTILINE)
+    matches = list(pattern.finditer(markdown))
+    parsed: dict[str, dict[str, str]] = {}
+
+    labels = OrderedDict(
+        [
+            ("criteria", r"\*\*Kriteria checklist dasar:\*\*"),
+            ("interpretation", r"\*\*Interpretasi checklist dasar:\*\*"),
+            ("evidence", r"\*\*Bukti temuan / evidence dasar:\*\*"),
+        ]
+    )
+
+    for index, match in enumerate(matches):
+        clause_number = match.group(1)
+        start = match.end()
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(markdown)
+        section = markdown[start:end]
+
+        parsed[clause_number] = {}
+        for label, pattern_text in labels.items():
+            label_match = re.search(pattern_text, section, flags=re.IGNORECASE)
+            if not label_match:
+                parsed[clause_number][label] = ""
+                continue
+
+            value_start = label_match.end()
+            value_end = len(section)
+            for other_pattern in labels.values():
+                other_match = re.search(other_pattern, section[value_start:], flags=re.IGNORECASE)
+                if other_match:
+                    value_end = min(value_end, value_start + other_match.start())
+
+            parsed[clause_number][label] = _clean_text(section[value_start:value_end])
+
+    return parsed
+
+
+def build_knowledge_base(entry: dict[str, str | list[str]], primary_entry: dict[str, str] | None = None) -> str:
     lines: list[str] = []
+    if primary_entry:
+        if primary_entry.get("criteria"):
+            lines.append("ACUAN PRIMER - KRITERIA CHECKLIST DASAR:")
+            lines.append(primary_entry["criteria"])
+            lines.append("")
+
+        if primary_entry.get("interpretation"):
+            lines.append("ACUAN PRIMER - INTERPRETASI CHECKLIST DASAR:")
+            lines.append(primary_entry["interpretation"])
+            lines.append("")
+
+        if primary_entry.get("evidence"):
+            lines.append("ACUAN PRIMER - BUKTI TEMUAN / EVIDENCE DASAR:")
+            lines.append(primary_entry["evidence"])
+            lines.append("")
+
     if entry["redaksi"]:
         lines.append("REDAKSI KLAUSUL:")
         lines.append(str(entry["redaksi"]))
@@ -225,6 +280,7 @@ def build_knowledge_base(entry: dict[str, str | list[str]]) -> str:
         lines.append("")
 
     lines.append("PRINSIP EVALUASI:")
+    lines.append("- Jika tersedia, dahulukan acuan primer interpretasi checklist dasar dan bukti temuan dasar saat menilai evidence.")
     lines.append("- Nilai kesesuaian berdasarkan substansi, kelengkapan, otorisasi, implementasi, dan keterlacakan evidence.")
     lines.append("- Jangan menjadikan tahun, tanggal, atau nomor dokumen sebagai syarat utama kesesuaian.")
     lines.append("- Gunakan redaksi klausul resmi PP No. 50 tentang Penerapan SMK3 sebagai acuan utama.")
@@ -241,6 +297,11 @@ async def import_knowledge_base() -> None:
     if not parsed:
         raise RuntimeError("No clause sections could be parsed from markdown source")
 
+    primary_parsed: dict[str, dict[str, str]] = {}
+    if PRIMARY_SOURCE_FILE.exists():
+        primary_markdown = PRIMARY_SOURCE_FILE.read_text(encoding="utf-8")
+        primary_parsed = parse_primary_markdown_clauses(primary_markdown)
+
     aligned = 0
     for title, official_number in TITLE_TO_OFFICIAL_CLAUSE_MAP.items():
         result = await db.clauses.update_one(
@@ -253,7 +314,7 @@ async def import_knowledge_base() -> None:
     updated = 0
     missing: list[str] = []
     for clause_number, entry in parsed.items():
-        knowledge_base = build_knowledge_base(entry)
+        knowledge_base = build_knowledge_base(entry, primary_parsed.get(clause_number))
         result = await db.clauses.update_one(
             {"clause_number": clause_number},
             {"$set": {"knowledge_base": knowledge_base}},

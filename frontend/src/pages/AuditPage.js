@@ -17,11 +17,11 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
 import { id as idLocale } from 'date-fns/locale';
-import { Upload, FileText, Trash2, Play, CheckCircle, XCircle, Loader2, Eye, Download, Archive, RefreshCw, Calendar as CalendarIcon, Save, ShieldCheck, Sparkles } from 'lucide-react';
+import { Upload, FileText, Trash2, Play, CheckCircle, XCircle, Loader2, Eye, Download, Archive, RefreshCw, Calendar as CalendarIcon, Save, ShieldCheck, Sparkles, Music2 } from 'lucide-react';
 import { toast } from 'sonner';
 
-const INLINE_PREVIEW_EXTENSIONS = ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'txt', 'csv'];
-const EXTENDED_ACCEPT_TYPES = '.pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.jpg,.jpeg,.png,.gif,.bmp,.webp,.txt,.rtf,.odt,.ods,.odp';
+const INLINE_PREVIEW_EXTENSIONS = ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'txt', 'csv', 'mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac'];
+const EXTENDED_ACCEPT_TYPES = '.pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.jpg,.jpeg,.png,.gif,.bmp,.webp,.tif,.tiff,.txt,.rtf,.odt,.ods,.odp,.mp3,.wav,.ogg,.m4a,.flac,.aac';
 
 const AuditPage = () => {
   const { API, user } = useContext(AppContext);
@@ -249,6 +249,14 @@ const AuditPage = () => {
       gif: 'image/gif',
       bmp: 'image/bmp',
       webp: 'image/webp',
+      tif: 'image/tiff',
+      tiff: 'image/tiff',
+      mp3: 'audio/mpeg',
+      wav: 'audio/wav',
+      ogg: 'audio/ogg',
+      m4a: 'audio/mp4',
+      flac: 'audio/flac',
+      aac: 'audio/aac',
     };
     return mimeByExtension[extension] || 'application/octet-stream';
   };
@@ -256,7 +264,7 @@ const AuditPage = () => {
   const getPreviewMode = (doc) => {
     const mimeType = getDocumentMimeType(doc);
     const extension = getDocumentExtension(doc?.filename);
-    return mimeType.includes('pdf') || mimeType.includes('image') || INLINE_PREVIEW_EXTENSIONS.includes(extension)
+    return mimeType.includes('pdf') || mimeType.includes('image') || mimeType.includes('audio') || INLINE_PREVIEW_EXTENSIONS.includes(extension)
       ? 'inline'
       : 'external';
   };
@@ -375,6 +383,19 @@ const AuditPage = () => {
                       alt={previewDoc.filename}
                       className="max-w-full max-h-full object-contain"
                     />
+                  </div>
+                ) : previewDoc.previewMode === 'inline' && getDocumentMimeType(previewDoc).includes('audio') ? (
+                  <div className="flex h-full items-center justify-center p-6">
+                    <div className="w-full max-w-xl rounded-lg border bg-white p-6">
+                      <div className="mb-4 flex items-center gap-3 text-slate-700">
+                        <Music2 className="h-5 w-5" />
+                        <span className="truncate text-sm font-medium">{previewDoc.filename}</span>
+                      </div>
+                      <audio controls className="w-full">
+                        <source src={previewDoc.previewUrl} type={getDocumentMimeType(previewDoc)} />
+                        Browser tidak mendukung preview audio.
+                      </audio>
+                    </div>
                   </div>
                 ) : previewDoc.previewMode === 'inline' ? (
                   <iframe
