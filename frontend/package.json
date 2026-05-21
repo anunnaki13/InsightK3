@@ -60,6 +60,7 @@
   "scripts": {
     "start": "craco start",
     "build": "craco build",
+    "serve:prod": "node production-server.js",
     "test": "craco test"
   },
   "browserslist": {

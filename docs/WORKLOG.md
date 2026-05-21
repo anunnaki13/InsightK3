@@ -50,3 +50,25 @@
 - Menambahkan menu `Settings` khusus admin untuk konfigurasi OpenRouter dari aplikasi, lengkap dengan verifikasi key, pilihan model, dan daftar model dari endpoint resmi OpenRouter.
 - Mengubah AI runtime agar membaca konfigurasi OpenRouter dari database aplikasi, dengan `.env` tetap menjadi fallback bila setting admin belum disimpan.
 - Melakukan deploy ulang backend/frontend setelah fitur scheduler dan admin AI settings aktif.
+
+## 2026-05-21
+- Menyesuaikan dataset audit SMK3 agar mengikuti checklist Excel `Checklist_Audit_Resertifikasi_SMK3_166_Kriteria_UP_Tenayan_20262.xlsx` dengan struktur 12 kriteria dan 166 klausul.
+- Menambahkan parser Excel `backend/services/excel_audit_source.py`, script seed `backend/seed_from_excel.py`, dan generator markdown knowledge base dari sumber Excel.
+- Memperkaya knowledge base klausul dengan redaksi resmi Excel, penjelasan operasional, catatan evidence/lampiran, serta acuan primer interpretasi PP 50/2012.
+- Menambahkan perlindungan persistence untuk mode mock/development agar metadata dan GridFS snapshot bisa dipulihkan dari `backend/.mock_state/`.
+- Menambahkan recovery GridFS lokal dari folder `evidence/` ketika metadata audit masih ada tetapi binary GridFS hilang pada mode mock/development.
+- Memperbaiki preview dokumen Excel modern, termasuk `.xlsx`, `.xlsm`, `.xltx`, dan `.xltm`, dengan renderer HTML ringan.
+- Memperkuat alur analisis AI agar kegagalan analisis tidak menutup panel penilaian manual auditor.
+- Memperbaiki tampilan list file evidence agar nama file panjang tidak keluar dari panel.
+- Memperbarui dashboard agar progress evidence dan progress auditor dipisah, termasuk warna progress bar yang berbeda.
+- Menambahkan total file evidence serta breakdown file evidence per kriteria pada dashboard.
+- Menambahkan blok klausul kosong pada panel performa per kriteria agar user bisa langsung membuka halaman audit/evidence klausul terkait.
+- Menambahkan dropdown pada breakdown penilaian auditor untuk menampilkan klausul non-confirm major/minor dan membuka klausul terkait.
+- Memisahkan tampilan role surveyor agar fokus pada data evidence dan catatan, bukan skor/penilaian auditor.
+- Mengubah label rekomendasi menjadi catatan khusus pada tampilan surveyor tanpa mengubah tampilan role lain.
+- Menambahkan halaman laporan catatan surveyor yang hanya menampilkan kriteria/klausul yang memiliki catatan.
+- Menonaktifkan export semua evidence untuk menghindari beban server besar, dengan export per kriteria tetap tersedia.
+- Menambahkan pilihan mode laporan PDF: semua detail klausul atau hanya temuan/non-confirm.
+- Mendesain ulang template PDF audit agar tabel ringkasan, skor per kriteria, dan detail klausul lebih rapi serta lebih mudah dibaca.
+- Menambahkan `frontend/production-server.js` untuk menyajikan build React pada port 6969 dan proxy `/api` ke backend port 8001.
+- Memperbarui README, dokumentasi pipeline evidence, dan catatan operasional agar sesuai dengan implementasi terbaru.

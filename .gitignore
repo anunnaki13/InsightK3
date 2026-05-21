@@ -59,17 +59,24 @@ htmlcov/
 logs/
 *.err.log
 *.out.log
+.runlogs/
 
 # Database
 *.db
 *.sqlite
 *.sqlite3
+backend/.mock_state/
+
+# Runtime audit evidence and recovered local files
+evidence/
+smk3/evidence/
 
 # Misc
 .cache/
 tmp/
 temp/
 *.tmp
+get-pip.py
 
 # Build
 /frontend/build

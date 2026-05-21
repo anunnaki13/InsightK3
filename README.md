@@ -1,31 +1,35 @@
 # InsightK3
 
-InsightK3 adalah aplikasi audit SMK3 berbasis FastAPI + React untuk mengelola 166 klausul audit, evidence dokumen, analisis AI, risk register, underwriting survey, field survey, emergency equipment readiness, dan dashboard konsolidasi.
+InsightK3 adalah aplikasi audit SMK3 berbasis FastAPI + React untuk mengelola 12 kriteria, 166 klausul audit, evidence dokumen, analisis AI, penilaian auditor, catatan surveyor, risk register, underwriting survey, field survey, emergency equipment readiness, dan dashboard konsolidasi.
 
-Repository ini sekarang memuat:
-- seed audit penuh 166 klausul
-- knowledge base primer dari checklist interpretasi PP 50/2012
-- pipeline evidence analysis yang menerima dokumen Office, PDF, gambar, dan audio
+Repository ini memuat:
+- seed audit penuh 12 kriteria / 166 klausul dari checklist Excel terbaru
+- knowledge base primer interpretasi PP 50/2012
+- pipeline evidence analysis untuk PDF, Office, Excel, gambar, audio, dan teks
+- dashboard yang memisahkan progress evidence dari progress penilaian auditor
+- laporan PDF dengan mode detail penuh atau temuan/non-confirm saja
+- tampilan khusus surveyor yang berfokus pada data evidence dan catatan
 - konfigurasi AI OpenRouter dari menu admin
-- deployment VPS berbasis `systemd`
 
 ## Fitur Utama
 
-- Audit SMK3 per klausul dengan upload evidence
-- Knowledge base per klausul dan acuan primer interpretasi checklist
-- Analisis AI untuk status `Sesuai` / `Belum Sesuai`
-- Risk register dan heatmap
-- Underwriting survey
-- Field survey
-- Emergency equipment readiness
-- PDF report dan export evidence
+- Audit SMK3 per klausul dengan upload, preview, download, dan analisis evidence
+- Knowledge base per klausul dari Excel `Checklist_Audit_Resertifikasi_SMK3_166_Kriteria_UP_Tenayan_20262.xlsx` dan acuan primer PP 50/2012
+- Analisis AI untuk status `Sesuai` / `Belum Sesuai` tanpa mengunci penilaian manual auditor saat AI gagal
+- Breakdown dashboard untuk klausul non-confirm dan klausul yang belum memiliki evidence
+- Progress bar evidence dan progress auditor dengan warna berbeda
+- Catatan surveyor terpisah dari rekomendasi/penilaian auditor
+- Report PDF audit dengan pilihan `Semua detail klausul` atau `Temuan / non-confirm saja`
+- Export evidence per kriteria; export semua evidence sengaja dinonaktifkan untuk stabilitas
+- Risk register, underwriting survey, field survey, emergency equipment readiness, dan heatmap konsolidasi
 
 ## Arsitektur Singkat
 
 - Backend: FastAPI, MongoDB, GridFS
 - Frontend: React, Tailwind, shadcn/ui
 - AI runtime: OpenRouter chat completions + audio transcription
-- File conversion: LibreOffice headless
+- File conversion: LibreOffice headless untuk Office legacy dan fallback preview
+- Excel preview: parser HTML ringan untuk `.xlsx`, `.xlsm`, `.xltx`, `.xltm`
 - PDF text extraction: `pdftotext`
 
 ## Struktur Project
@@ -35,13 +39,18 @@ InsightK3/
 ├── backend/
 │   ├── routers/
 │   ├── services/
+│   │   └── excel_audit_source.py
 │   ├── models/
 │   ├── convert_primary_checklist_pdf.py
-│   └── import_knowledge_base_markdown.py
+│   ├── import_knowledge_base_markdown.py
+│   └── seed_from_excel.py
 ├── docs/
 │   ├── AI_EVIDENCE_PIPELINE.md
+│   ├── OPERATIONS_2026-05-21.md
 │   └── source_materials/
 ├── frontend/
+│   └── production-server.js
+├── Checklist_Audit_Resertifikasi_SMK3_166_Kriteria_UP_Tenayan_20262.xlsx
 ├── knowledge-base-smk3-166-kriteria.md
 ├── knowledge-base-pp50-interpretasi-primer.md
 └── README.md
@@ -52,36 +61,46 @@ InsightK3/
 Evidence audit saat ini menerima:
 - PDF valid
 - Word: `.doc`, `.docx`, `.rtf`, `.odt`
-- Excel: `.xls`, `.xlsx`, `.ods`, `.csv`
+- Excel: `.xls`, `.xlsx`, `.xlsm`, `.xlsb`, `.xltx`, `.xltm`, `.ods`, `.csv`
 - PowerPoint: `.ppt`, `.pptx`, `.odp`
 - Gambar: `.jpg`, `.jpeg`, `.png`, `.gif`, `.bmp`, `.webp`, `.tif`, `.tiff`
 - Audio: `.mp3`, `.wav`, `.ogg`, `.m4a`, `.flac`, `.aac`
 - Teks: `.txt`, `.md`, `.log`
 
 Catatan penting:
-- File `.pdf` yang sebenarnya korup, kosong, atau bukan PDF valid sekarang ditolak saat upload.
-- File Office dikonversi ke PDF melalui LibreOffice sebelum dianalisis.
+- File `.pdf` yang korup, kosong, atau bukan PDF valid ditolak saat upload.
+- Excel OpenXML modern dapat dipreview sebagai HTML tanpa harus menunggu konversi PDF.
+- File Office legacy tetap memakai LibreOffice headless untuk konversi/preview.
 - Audio ditranskripsi dulu sebelum masuk ke prompt AI.
-- Gambar dan scan PDF mengandalkan model multimodal/OpenRouter file parser untuk pembacaan isi.
+- Gambar dan scan PDF mengandalkan kemampuan model multimodal/OCR dari provider AI.
+- Jika metadata GridFS ada tetapi file binary hilang pada mode development/mock, backend mencoba recovery dari folder `evidence/` lokal.
 
 Detail alur ini ada di [docs/AI_EVIDENCE_PIPELINE.md](docs/AI_EVIDENCE_PIPELINE.md).
 
-## Knowledge Base Primer
+## Knowledge Base dan Seed Audit
 
-Repository ini menambahkan basis primer dari checklist interpretasi PP 50/2012:
-- sumber scan PDF: `10 Cheklist_Interpretasi_PP 50_2012 Lengkap_Dwi_NP-1.pdf`
-- hasil konversi markdown: [knowledge-base-pp50-interpretasi-primer.md](knowledge-base-pp50-interpretasi-primer.md)
+Sumber utama 166 klausul:
+- `Checklist_Audit_Resertifikasi_SMK3_166_Kriteria_UP_Tenayan_20262.xlsx`
+
+Sumber primer interpretasi:
+- `10 Cheklist_Interpretasi_PP 50_2012 Lengkap_Dwi_NP-1.pdf`
+- [knowledge-base-pp50-interpretasi-primer.md](knowledge-base-pp50-interpretasi-primer.md)
 
 Script terkait:
+- [backend/services/excel_audit_source.py](backend/services/excel_audit_source.py)
+- [backend/seed_from_excel.py](backend/seed_from_excel.py)
+- [backend/export_excel_knowledge_base.py](backend/export_excel_knowledge_base.py)
 - [backend/convert_primary_checklist_pdf.py](backend/convert_primary_checklist_pdf.py)
 - [backend/import_knowledge_base_markdown.py](backend/import_knowledge_base_markdown.py)
 
-Setelah import, setiap klausul menyimpan blok:
+Setiap klausul menyimpan blok acuan:
 - `ACUAN PRIMER - KRITERIA CHECKLIST DASAR`
 - `ACUAN PRIMER - INTERPRETASI CHECKLIST DASAR`
 - `ACUAN PRIMER - BUKTI TEMUAN / EVIDENCE DASAR`
+- redaksi resmi dari checklist Excel
+- catatan evidence/lampiran dari checklist
 
-Prompt AI diarahkan untuk mendahulukan blok primer ini sebelum knowledge base lama.
+Prompt AI diarahkan untuk mendahulukan acuan primer dan redaksi Excel sebelum knowledge base lama.
 
 ## Setup Lokal
 
@@ -89,7 +108,7 @@ Prompt AI diarahkan untuk mendahulukan blok primer ini sebelum knowledge base la
 
 - Python 3.10+
 - Node.js 18+
-- MongoDB 7+
+- MongoDB 7+ untuk runtime production
 - `pdftotext`
 - LibreOffice / `soffice`
 
@@ -111,7 +130,7 @@ cp .env.example .env
 uvicorn server:app --host 0.0.0.0 --port 8001 --reload
 ```
 
-### Frontend
+### Frontend Development
 
 ```bash
 cd frontend
@@ -120,12 +139,16 @@ cp .env.example .env
 npm start
 ```
 
-Frontend build production:
+### Frontend Production Build di Port 6969
 
 ```bash
 cd frontend
+npm install --legacy-peer-deps
 npm run build
+PORT=6969 BACKEND_TARGET=http://127.0.0.1:8001 npm run serve:prod
 ```
+
+`frontend/production-server.js` menyajikan build React dan meneruskan `/api` ke backend. Ini berguna untuk deployment sederhana atau recovery lokal ketika aplikasi perlu tersedia di `http://<host>:6969/`.
 
 ## Konfigurasi AI
 
@@ -143,17 +166,29 @@ OPENROUTER_STT_MODEL=openai/whisper-large-v3
 OPENROUTER_PDF_ENGINE=mistral-ocr
 ```
 
+## Data Runtime yang Tidak Masuk Git
+
+Data berikut sengaja tidak disimpan ke repository:
+- `.env` dan semua env lokal
+- `evidence/`
+- `backend/.mock_state/`
+- `.runlogs/`
+- build output frontend
+
+MongoDB/GridFS adalah sumber data production. Mode `MONGO_USE_MOCK` hanya untuk development/recovery lokal dan menyimpan snapshot sementara di `backend/.mock_state/`.
+
 ## Deploy
 
 Dokumen deploy:
 - [DEPLOYMENT.md](DEPLOYMENT.md)
 - [docs/VPS_DEPLOYMENT_2026-04-14.md](docs/VPS_DEPLOYMENT_2026-04-14.md)
+- [docs/OPERATIONS_2026-05-21.md](docs/OPERATIONS_2026-05-21.md)
 
-Runtime VPS yang sedang dipakai pada implementasi ini:
-- frontend: port `3131`
-- backend: port `8001`
-- process manager: `systemd`
-- database: `mongod`
+Runtime yang umum dipakai pada implementasi ini:
+- frontend production server: port `6969`
+- backend API: port `8001`
+- database: MongoDB/GridFS
+- process manager production: `systemd` atau service manager setara
 
 ## Dokumentasi Tambahan
 
@@ -164,7 +199,7 @@ Runtime VPS yang sedang dipakai pada implementasi ini:
 
 ## Catatan Operasional
 
-- `.env` tidak disimpan ke Git.
-- File evidence disimpan di GridFS.
-- Preview dan analisis sangat bergantung pada kualitas file upload.
-- Jika preview tidak bisa dibuka dan analisis hanya membaca nama file, cek dulu apakah file source valid sebelum upload.
+- Jangan menjalankan seed/reset pada database production yang sedang dipakai audit aktif kecuali sudah ada backup.
+- Export semua evidence dinonaktifkan untuk mencegah beban server berlebih; gunakan export per kriteria.
+- Preview dan analisis sangat bergantung pada validitas file sumber.
+- Jika analisis AI gagal, evidence tetap aman dan auditor tetap bisa mengisi penilaian manual.

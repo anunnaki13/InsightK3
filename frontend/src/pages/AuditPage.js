@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { AppContext } from '../App';
 import axios from 'axios';
+import { useSearchParams } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,18 +20,59 @@ import { format } from 'date-fns';
 import { id as idLocale } from 'date-fns/locale';
 import { Upload, FileText, Trash2, Play, CheckCircle, XCircle, Loader2, Eye, Download, Archive, RefreshCw, Calendar as CalendarIcon, Save, ShieldCheck, Sparkles, Music2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { loadSurveyorNotesByClause, upsertSurveyorNote } from '../lib/surveyorNotes';
 
 const INLINE_PREVIEW_EXTENSIONS = ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'txt', 'csv', 'mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac'];
 const EXTENDED_ACCEPT_TYPES = '.pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.jpg,.jpeg,.png,.gif,.bmp,.webp,.tif,.tiff,.txt,.rtf,.odt,.ods,.odp,.mp3,.wav,.ogg,.m4a,.flac,.aac';
+const LIST_MARKER_REGEX = /^((\d+[\).\s])|[-*•]\s+)/;
+
+const AnalysisTextBlock = ({ text, tone = 'slate' }) => {
+  const normalized = (text || '').replace(/\r/g, '').trim();
+  const lines = normalized.split('\n').map((line) => line.trim()).filter(Boolean);
+  const shouldRenderList = lines.length > 1 || lines.some((line) => LIST_MARKER_REGEX.test(line));
+  const toneClassName = {
+    slate: 'bg-slate-50 border-slate-200',
+    green: 'bg-green-50 border-green-200',
+    orange: 'bg-orange-50 border-orange-200',
+  }[tone];
+
+  if (!normalized) {
+    return <p className={`rounded border p-3 text-sm leading-6 text-slate-500 ${toneClassName}`}>Belum ada isi analisis.</p>;
+  }
+
+  if (!shouldRenderList) {
+    return <p className={`rounded border p-3 text-sm leading-6 text-slate-700 whitespace-pre-wrap ${toneClassName}`}>{normalized}</p>;
+  }
+
+  return (
+    <div className={`rounded border p-3 ${toneClassName}`}>
+      <ul className="space-y-2 text-sm leading-6 text-slate-700">
+        {lines.map((line, index) => (
+          <li key={`${index}-${line.slice(0, 24)}`} className="flex items-start gap-2">
+            <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-70" />
+            <span className="break-words">{line.replace(LIST_MARKER_REGEX, '').trim()}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+};
 
 const AuditPage = () => {
   const { API, user } = useContext(AppContext);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const isSurveyor = user?.role === 'surveyor';
   const [criteria, setCriteria] = useState([]);
   const [clauses, setClauses] = useState([]);
   const [selectedCriteria, setSelectedCriteria] = useState('');
   const [selectedClause, setSelectedClause] = useState(null);
   const [documents, setDocuments] = useState([]);
   const [auditResult, setAuditResult] = useState(null);
+  const [analysisError, setAnalysisError] = useState('');
+  const [surveyNotes, setSurveyNotes] = useState([]);
+  const [surveyNoteForm, setSurveyNoteForm] = useState({ note_text: '' });
+  const [savingSurveyNote, setSavingSurveyNote] = useState(false);
+  const [editingSurveyNoteId, setEditingSurveyNoteId] = useState('');
   const [loading, setLoading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [previewDoc, setPreviewDoc] = useState(null);
@@ -43,10 +85,16 @@ const AuditPage = () => {
     agreed_date: ''
   });
   const [savingAssessment, setSavingAssessment] = useState(false);
+  const [focusClauseId, setFocusClauseId] = useState(searchParams.get('clause') || '');
 
   useEffect(() => {
     fetchCriteria();
   }, []);
+
+  useEffect(() => {
+    const clauseId = searchParams.get('clause') || '';
+    setFocusClauseId(clauseId);
+  }, [searchParams]);
 
   useEffect(() => {
     if (selectedCriteria) {
@@ -57,9 +105,17 @@ const AuditPage = () => {
   useEffect(() => {
     if (selectedClause) {
       fetchDocuments(selectedClause.id);
-      fetchAuditResult(selectedClause.id);
+      if (isSurveyor) {
+        setAuditResult(null);
+        setAnalysisError('');
+        setEditingSurveyNoteId('');
+        setSurveyNoteForm({ note_text: '' });
+        setSurveyNotes(loadSurveyorNotesByClause(user?.id, selectedClause.id));
+      } else {
+        fetchAuditResult(selectedClause.id);
+      }
     }
-  }, [selectedClause]);
+  }, [selectedClause, isSurveyor]);
 
   useEffect(() => {
     if (auditResult) {
@@ -68,7 +124,13 @@ const AuditPage = () => {
         auditor_notes: auditResult.auditor_notes || '',
         agreed_date: auditResult.agreed_date ? new Date(auditResult.agreed_date).toISOString().split('T')[0] : ''
       });
+      return;
     }
+    setAuditorAssessment({
+      auditor_status: '',
+      auditor_notes: '',
+      agreed_date: ''
+    });
   }, [auditResult]);
 
   useEffect(() => {
@@ -87,6 +149,13 @@ const AuditPage = () => {
     try {
       const response = await axios.get(`${API}/criteria`);
       setCriteria(response.data);
+      if (focusClauseId) {
+        const allClausesResponse = await axios.get(`${API}/clauses`);
+        const targetClause = allClausesResponse.data.find((clause) => clause.id === focusClauseId);
+        if (targetClause) {
+          setSelectedCriteria(targetClause.criteria_id);
+        }
+      }
     } catch (error) {
       toast.error('Gagal memuat kriteria');
     }
@@ -96,6 +165,15 @@ const AuditPage = () => {
     try {
       const response = await axios.get(`${API}/clauses?criteria_id=${criteriaId}`);
       setClauses(response.data);
+      if (focusClauseId) {
+        const targetClause = response.data.find((clause) => clause.id === focusClauseId);
+        if (targetClause) {
+          setSelectedClause(targetClause);
+          setFocusClauseId('');
+          setSearchParams({}, { replace: true });
+          return;
+        }
+      }
       if (response.data.length > 0) {
         setSelectedClause(response.data[0]);
       }
@@ -117,12 +195,19 @@ const AuditPage = () => {
     try {
       const response = await axios.get(`${API}/audit/results/${clauseId}`);
       setAuditResult(response.data);
+      setAnalysisError('');
     } catch (error) {
       setAuditResult(null);
     }
   };
 
   const handleFileUpload = async (e) => {
+    if (isSurveyor) {
+      toast.info('Mode surveyor hanya menyajikan data.');
+      e.target.value = '';
+      return;
+    }
+
     const file = e.target.files[0];
     if (!file || !selectedClause) return;
 
@@ -135,6 +220,7 @@ const AuditPage = () => {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       toast.success('Dokumen berhasil diupload');
+      setAnalysisError('');
       fetchDocuments(selectedClause.id);
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Gagal mengupload dokumen');
@@ -145,6 +231,11 @@ const AuditPage = () => {
   };
 
   const handleDeleteDocument = async (docId) => {
+    if (isSurveyor) {
+      toast.info('Mode surveyor hanya menyajikan data.');
+      return;
+    }
+
     if (!window.confirm('Apakah Anda yakin ingin menghapus dokumen ini? Jika tidak ada dokumen tersisa, hasil audit akan dihapus.')) {
       return;
     }
@@ -155,6 +246,7 @@ const AuditPage = () => {
       if (response.data.audit_result_deleted) {
         toast.success('Dokumen dan hasil audit berhasil dihapus (tidak ada dokumen tersisa)');
         setAuditResult(null);
+        setAnalysisError('');
       } else {
         toast.success('Dokumen berhasil dihapus');
       }
@@ -297,8 +389,13 @@ const AuditPage = () => {
   };
 
   const handleSaveAuditorAssessment = async () => {
-    if (!selectedClause || !auditResult) {
-      toast.error('Tidak ada hasil audit AI. Lakukan analisis AI terlebih dahulu.');
+    if (isSurveyor) {
+      toast.info('Mode surveyor hanya menyajikan data.');
+      return;
+    }
+
+    if (!selectedClause || documents.length === 0) {
+      toast.error('Upload evidence terlebih dahulu sebelum menyimpan penilaian auditor.');
       return;
     }
 
@@ -324,6 +421,7 @@ const AuditPage = () => {
         }
       );
       toast.success('Penilaian auditor berhasil disimpan!');
+      setAnalysisError('');
       fetchAuditResult(selectedClause.id);
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Gagal menyimpan penilaian auditor');
@@ -333,17 +431,53 @@ const AuditPage = () => {
   };
 
   const handleAnalyze = async () => {
+    if (isSurveyor) {
+      toast.info('Mode surveyor hanya menyajikan data.');
+      return;
+    }
+
     if (!selectedClause) return;
 
     setAnalyzing(true);
     try {
       const response = await axios.post(`${API}/audit/analyze/${selectedClause.id}`);
       setAuditResult(response.data);
+      setAnalysisError('');
       toast.success('Analisis selesai!');
     } catch (error) {
+      setAnalysisError(error.response?.data?.detail || 'Gagal menganalisis dokumen');
       toast.error(error.response?.data?.detail || 'Gagal menganalisis dokumen');
     } finally {
       setAnalyzing(false);
+    }
+  };
+
+  const handleSaveSurveyNote = async () => {
+    if (!isSurveyor || !selectedClause) {
+      return;
+    }
+
+    if (!surveyNoteForm.note_text.trim()) {
+      toast.error('Catatan tidak boleh kosong');
+      return;
+    }
+
+    setSavingSurveyNote(true);
+    try {
+      const nextNote = upsertSurveyorNote(user?.id, {
+        id: editingSurveyNoteId || undefined,
+        clause_id: selectedClause.id,
+        note_text: surveyNoteForm.note_text,
+      });
+      setSurveyNotes(loadSurveyorNotesByClause(user?.id, selectedClause.id));
+      setEditingSurveyNoteId(nextNote.id);
+      toast.success(editingSurveyNoteId ? 'Catatan berhasil diperbarui' : 'Catatan berhasil disimpan');
+      setSurveyNoteForm({ note_text: '' });
+      setEditingSurveyNoteId('');
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Gagal menyimpan catatan');
+    } finally {
+      setSavingSurveyNote(false);
     }
   };
 
@@ -359,7 +493,7 @@ const AuditPage = () => {
     <Layout>
       {/* Preview Dialog */}
       <Dialog open={showPreview} onOpenChange={setShowPreview}>
-        <DialogContent className="max-w-4xl h-[80vh]">
+        <DialogContent className="h-[90vh] w-[95vw] max-w-7xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FileText className="w-5 h-5" />
@@ -373,7 +507,7 @@ const AuditPage = () => {
                   <iframe
                     src={`${previewDoc.previewUrl}#view=FitH`}
                     className="w-full h-full border-0"
-                    style={{ minHeight: '600px' }}
+                    style={{ minHeight: '76vh' }}
                     title="PDF Preview"
                   />
                 ) : previewDoc.previewMode === 'inline' && getDocumentMimeType(previewDoc).includes('image') ? (
@@ -401,7 +535,7 @@ const AuditPage = () => {
                   <iframe
                     src={previewDoc.previewUrl}
                     className="w-full h-full border-0 bg-white"
-                    style={{ minHeight: '600px' }}
+                    style={{ minHeight: '76vh' }}
                     title="Document Preview"
                   />
                 ) : (
@@ -524,23 +658,40 @@ const AuditPage = () => {
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-lg">
                 <Sparkles className="h-5 w-5 text-sky-700" />
-                Audit Flow
+                {isSurveyor ? 'Survey Flow' : 'Audit Flow'}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
-              <div className="rounded-[20px] bg-slate-50 px-4 py-3 text-slate-700">1. Pilih kriteria dan klausul target.</div>
-              <div className="rounded-[20px] bg-slate-50 px-4 py-3 text-slate-700">2. Pastikan knowledge base klausul tersedia.</div>
-              <div className="rounded-[20px] bg-slate-50 px-4 py-3 text-slate-700">3. Upload evidence dan lakukan review dokumen.</div>
-              <div className="rounded-[20px] bg-slate-50 px-4 py-3 text-slate-700">4. Jalankan analisis AI untuk mendapatkan masukan awal.</div>
-              <div className="rounded-[20px] bg-slate-50 px-4 py-3 text-slate-700">5. Simpan keputusan auditor sebagai hasil final.</div>
+              {isSurveyor ? (
+                <>
+                  <div className="rounded-[20px] bg-slate-50 px-4 py-3 text-slate-700">1. Pilih klausul yang ingin dicatat.</div>
+                  <div className="rounded-[20px] bg-slate-50 px-4 py-3 text-slate-700">2. Baca evidence yang telah terupload.</div>
+                  <div className="rounded-[20px] bg-slate-50 px-4 py-3 text-slate-700">3. Tambahkan catatan surveyor bila ada temuan atau klarifikasi.</div>
+                  <div className="rounded-[20px] bg-slate-50 px-4 py-3 text-slate-700">4. Generate laporan catatan untuk rekap evidence dan catatan.</div>
+                </>
+              ) : (
+                <>
+                  <div className="rounded-[20px] bg-slate-50 px-4 py-3 text-slate-700">1. Pilih kriteria dan klausul target.</div>
+                  <div className="rounded-[20px] bg-slate-50 px-4 py-3 text-slate-700">2. Pastikan knowledge base klausul tersedia.</div>
+                  <div className="rounded-[20px] bg-slate-50 px-4 py-3 text-slate-700">3. Upload evidence dan lakukan review dokumen.</div>
+                  <div className="rounded-[20px] bg-slate-50 px-4 py-3 text-slate-700">4. Jalankan analisis AI untuk mendapatkan masukan awal.</div>
+                  <div className="rounded-[20px] bg-slate-50 px-4 py-3 text-slate-700">5. Simpan keputusan auditor sebagai hasil final.</div>
+                </>
+              )}
             </CardContent>
           </Card>
-        </section>
+          </section>
 
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-2xl font-extrabold text-slate-950">Evidence and Assessment</h2>
-            <p className="mt-1 text-sm text-slate-600">Panel kerja utama untuk upload, analisis, dan finalisasi keputusan auditor.</p>
+            <h2 className="text-2xl font-extrabold text-slate-950">
+              {isSurveyor ? 'Evidence dan Catatan' : 'Evidence and Assessment'}
+            </h2>
+            <p className="mt-1 text-sm text-slate-600">
+              {isSurveyor
+                ? 'Panel penyajian data evidence dan catatan surveyor.'
+                : 'Panel kerja utama untuk upload, analisis, dan finalisasi keputusan auditor.'}
+            </p>
           </div>
           {user?.role === 'admin' && (
             <Button
@@ -608,7 +759,7 @@ const AuditPage = () => {
                 <CardTitle>
                   {selectedClause ? `${selectedClause.clause_number}: ${selectedClause.title}` : 'Pilih klausul'}
                 </CardTitle>
-                {selectedClause && documents.length > 0 && user?.role === 'auditor' && (
+                {selectedClause && documents.length > 0 && user?.role === 'auditor' && !isSurveyor && (
                   <Button
                     onClick={handleAnalyze}
                     disabled={analyzing || !selectedClause.knowledge_base}
@@ -628,11 +779,16 @@ const AuditPage = () => {
                     )}
                   </Button>
                 )}
-                {selectedClause && documents.length > 0 && user?.role !== 'auditor' && (
+                {selectedClause && documents.length > 0 && !isSurveyor && user?.role !== 'auditor' && (
                     <div className="rounded-[18px] border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
                       ℹ️ Analisis AI hanya dapat dilakukan oleh Auditor
                     </div>
                   )}
+                {isSurveyor && selectedClause && documents.length > 0 && (
+                  <div className="rounded-[18px] border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
+                    Mode surveyor aktif. Halaman ini hanya menampilkan data evidence dan detail klausul.
+                  </div>
+                )}
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -692,29 +848,35 @@ const AuditPage = () => {
                   )}
 
                   {/* Upload Area */}
-                  <div className="rounded-[24px] border-2 border-dashed border-slate-300 p-8 text-center transition-colors hover:border-emerald-500">
-                    <Upload className="w-12 h-12 mx-auto text-slate-400 mb-4" />
-                    <p className="text-sm text-slate-600 mb-4">Upload dokumen evidence: PDF, hasil scan PDF, Word, Excel, PowerPoint, gambar, dan dokumen standar lain</p>
-                    <input
-                      type="file"
-                      id="file-upload"
-                      className="hidden"
-                      onChange={handleFileUpload}
-                      accept={EXTENDED_ACCEPT_TYPES}
-                      data-testid="file-upload-input"
-                    />
-                    <label htmlFor="file-upload">
-                      <Button
-                        type="button"
-                        disabled={loading}
-                        onClick={() => document.getElementById('file-upload').click()}
-                        className="rounded-[18px] bg-emerald-700 hover:bg-emerald-800"
-                        data-testid="upload-button"
-                      >
-                        {loading ? 'Mengupload...' : 'Pilih File'}
-                      </Button>
-                    </label>
-                  </div>
+                  {!isSurveyor ? (
+                    <div className="rounded-[24px] border-2 border-dashed border-slate-300 p-8 text-center transition-colors hover:border-emerald-500">
+                      <Upload className="w-12 h-12 mx-auto text-slate-400 mb-4" />
+                      <p className="text-sm text-slate-600 mb-4">Upload dokumen evidence: PDF, hasil scan PDF, Word, Excel, PowerPoint, gambar, dan dokumen standar lain</p>
+                      <input
+                        type="file"
+                        id="file-upload"
+                        className="hidden"
+                        onChange={handleFileUpload}
+                        accept={EXTENDED_ACCEPT_TYPES}
+                        data-testid="file-upload-input"
+                      />
+                      <label htmlFor="file-upload">
+                        <Button
+                          type="button"
+                          disabled={loading}
+                          onClick={() => document.getElementById('file-upload').click()}
+                          className="rounded-[18px] bg-emerald-700 hover:bg-emerald-800"
+                          data-testid="upload-button"
+                        >
+                          {loading ? 'Mengupload...' : 'Pilih File'}
+                        </Button>
+                      </label>
+                    </div>
+                  ) : (
+                    <div className="rounded-[24px] border border-sky-200 bg-sky-50 p-6 text-sm text-sky-900">
+                      Surveyor hanya melihat data evidence yang sudah ada. Tidak ada upload, analisa, atau penilaian dari halaman ini.
+                    </div>
+                  )}
 
                   {/* Documents List */}
                   {documents.length > 0 && (
@@ -734,17 +896,17 @@ const AuditPage = () => {
                       </div>
                       <div className="space-y-2">
                         {documents.map((doc) => (
-                          <div key={doc.id} className="flex items-center justify-between rounded-[20px] bg-slate-50 p-3 transition-colors hover:bg-slate-100" data-testid="document-item">
-                            <div className="flex items-center gap-3 flex-1">
+                          <div key={doc.id} className="flex items-start justify-between gap-3 rounded-[20px] bg-slate-50 p-3 transition-colors hover:bg-slate-100" data-testid="document-item">
+                            <div className="flex min-w-0 flex-1 items-start gap-3">
                               <FileText className="w-5 h-5 text-blue-500 flex-shrink-0" />
                               <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium truncate">{doc.filename}</p>
-                                <p className="text-xs text-slate-500">
+                                <p className="break-all text-sm font-medium leading-5 text-slate-900">{doc.filename}</p>
+                                <p className="mt-1 text-xs text-slate-500">
                                   {(doc.size / 1024).toFixed(1)} KB • {new Date(doc.uploaded_at).toLocaleDateString('id-ID')}
                                 </p>
                               </div>
                             </div>
-                            <div className="flex items-center gap-1 ml-2">
+                            <div className="ml-2 flex shrink-0 items-center gap-1 self-start">
                               <Button
                                 variant="ghost"
                                 size="icon"
@@ -765,16 +927,18 @@ const AuditPage = () => {
                               >
                                 <Download className="w-4 h-4" />
                               </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => handleDeleteDocument(doc.id)}
-                                className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50"
-                                data-testid="delete-document-button"
-                                title="Hapus"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
+                              {!isSurveyor && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleDeleteDocument(doc.id)}
+                                  className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50"
+                                  data-testid="delete-document-button"
+                                  title="Hapus"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              )}
                             </div>
                           </div>
                         ))}
@@ -782,8 +946,76 @@ const AuditPage = () => {
                     </div>
                   )}
 
+                  {isSurveyor && selectedClause && (
+                    <Card className="rounded-[24px] border-2 border-sky-200 shadow-none" data-testid="survey-note-card">
+                      <CardHeader className="bg-sky-50 pb-3">
+                        <CardTitle className="flex items-center gap-2 text-lg text-sky-900">
+                          <FileText className="h-5 w-5" />
+                          Catatan Surveyor
+                        </CardTitle>
+                        <p className="mt-1 text-xs text-sky-700">
+                          Catatan ini khusus untuk surveyor dan tidak memengaruhi penilaian auditor.
+                        </p>
+                      </CardHeader>
+                      <CardContent className="space-y-4 pt-5">
+                        <Textarea
+                          value={surveyNoteForm.note_text}
+                          onChange={(e) => setSurveyNoteForm({ note_text: e.target.value })}
+                          placeholder="Tulis catatan lapangan atau temuan tambahan..."
+                          className="min-h-[120px] resize-y rounded-[16px]"
+                          data-testid="survey-note-textarea"
+                        />
+                        <div className="flex justify-end">
+                          <Button
+                            onClick={handleSaveSurveyNote}
+                            disabled={savingSurveyNote}
+                            className="rounded-[18px] bg-sky-700 hover:bg-sky-800"
+                            data-testid="save-survey-note-button"
+                          >
+                            {savingSurveyNote ? 'Menyimpan...' : 'Simpan Catatan'}
+                          </Button>
+                        </div>
+
+                        <div className="space-y-2">
+                          <p className="text-sm font-semibold text-slate-900">Catatan Tersimpan</p>
+                          {surveyNotes.length === 0 ? (
+                            <p className="text-sm text-slate-500">Belum ada catatan untuk klausul ini.</p>
+                          ) : (
+                            surveyNotes.map((note) => (
+                              <div key={note.id} className="rounded-[18px] border border-slate-200 bg-white p-3">
+                                <div className="flex items-start justify-between gap-3">
+                                  <p className="text-sm leading-6 text-slate-700 whitespace-pre-line">{note.note_text}</p>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 rounded-full px-3 text-xs text-slate-600 hover:bg-slate-100"
+                                    onClick={() => {
+                                      setEditingSurveyNoteId(note.id);
+                                      setSurveyNoteForm({ note_text: note.note_text });
+                                    }}
+                                  >
+                                    Edit
+                                  </Button>
+                                </div>
+                                <p className="mt-2 text-xs text-slate-500">
+                                  {new Date(note.created_at).toLocaleString('id-ID')}
+                                </p>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
                   {/* Audit Result */}
-                  {auditResult && (
+                  {analysisError && !isSurveyor && (
+                    <div className="rounded-[20px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                      {analysisError}
+                    </div>
+                  )}
+
+                  {auditResult && !isSurveyor && (
                     <Card className="rounded-[24px] border-2 border-slate-100 shadow-none" data-testid="audit-result-card">
                       <CardHeader className="pb-3">
                         <div className="flex items-center justify-between">
@@ -817,17 +1049,17 @@ const AuditPage = () => {
 
                         <div>
                           <h4 className="font-medium text-sm mb-2">Analisis Kesesuaian Dokumen</h4>
-                          <p className="text-sm text-slate-700 bg-slate-50 p-3 rounded">{auditResult.reasoning}</p>
+                          <AnalysisTextBlock text={auditResult.reasoning} tone="slate" />
                         </div>
 
                         <div>
                           <h4 className="font-medium text-sm mb-2 text-green-700">Dokumen yang Sudah Sesuai</h4>
-                          <p className="text-sm text-slate-700 bg-green-50 p-3 rounded border border-green-200">{auditResult.feedback}</p>
+                          <AnalysisTextBlock text={auditResult.feedback} tone="green" />
                         </div>
 
                         <div>
                           <h4 className="font-medium text-sm mb-2 text-orange-700">Dokumen yang Perlu Dilengkapi</h4>
-                          <p className="text-sm text-slate-700 bg-orange-50 p-3 rounded border border-orange-200">{auditResult.improvement_suggestions}</p>
+                          <AnalysisTextBlock text={auditResult.improvement_suggestions} tone="orange" />
                         </div>
 
                         <div className="pt-3 border-t">
@@ -844,14 +1076,16 @@ const AuditPage = () => {
                   )}
 
                   {/* Auditor Assessment Form */}
-                  {auditResult && user?.role === 'auditor' && (
+                  {selectedClause && documents.length > 0 && user?.role === 'auditor' && !isSurveyor && (
                     <Card className="rounded-[24px] border-2 border-emerald-200 shadow-none" data-testid="auditor-assessment-card">
                       <CardHeader className="bg-emerald-50 pb-3">
                         <CardTitle className="flex items-center gap-2 text-lg text-emerald-900">
                           <ShieldCheck className="h-5 w-5" />
                           Penilaian Auditor (Keputusan Akhir)
                         </CardTitle>
-                        <p className="text-xs text-emerald-700 mt-1">Form penilaian final auditor terhadap klausul ini</p>
+                        <p className="mt-1 text-xs text-emerald-700">
+                          Form penilaian final auditor terhadap klausul ini. Tetap dapat digunakan walau analisis AI gagal.
+                        </p>
                       </CardHeader>
                       <CardContent className="space-y-5 pt-5">
                         {/* Status Assessment */}
@@ -967,19 +1201,19 @@ const AuditPage = () => {
                         </div>
 
                         {/* Status Display if already assessed */}
-                        {auditResult.auditor_status && (
+                        {auditResult?.auditor_status && (
                           <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
                             <p className="text-xs font-semibold text-slate-700 mb-2">Status Penilaian Tersimpan:</p>
                             <Badge 
                               variant="outline" 
                               className={`${
-                                auditResult.auditor_status === 'confirm' ? 'border-green-500 text-green-700 bg-green-50' :
-                                auditResult.auditor_status === 'non-confirm-minor' ? 'border-orange-500 text-orange-700 bg-orange-50' :
+                                auditResult?.auditor_status === 'confirm' ? 'border-green-500 text-green-700 bg-green-50' :
+                                auditResult?.auditor_status === 'non-confirm-minor' ? 'border-orange-500 text-orange-700 bg-orange-50' :
                                 'border-red-500 text-red-700 bg-red-50'
                               }`}
                             >
-                              {auditResult.auditor_status === 'confirm' ? '✅ Confirm' :
-                               auditResult.auditor_status === 'non-confirm-minor' ? '⚠️ Non-Confirm Minor' :
+                              {auditResult?.auditor_status === 'confirm' ? '✅ Confirm' :
+                               auditResult?.auditor_status === 'non-confirm-minor' ? '⚠️ Non-Confirm Minor' :
                                '❌ Non-Confirm Major'}
                             </Badge>
                           </div>

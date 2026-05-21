@@ -13,18 +13,26 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AlertCircle, Calendar, CheckCircle, Clock, Plus, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
+import { loadSurveyorNotes, loadSurveyorNotesByClause, upsertSurveyorNote } from '../lib/surveyorNotes';
 
 const RecommendationsPage = () => {
   const { API, user } = useContext(AppContext);
   const [recommendations, setRecommendations] = useState([]);
+  const [surveyNotes, setSurveyNotes] = useState([]);
   const [clauses, setClauses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingNoteId, setEditingNoteId] = useState('');
   const [formData, setFormData] = useState({
     clause_id: '',
     recommendation_text: '',
     deadline: ''
   });
+  const [noteForm, setNoteForm] = useState({
+    clause_id: '',
+    note_text: '',
+  });
+  const isSurveyor = user?.role === 'surveyor';
 
   useEffect(() => {
     fetchData();
@@ -32,16 +40,41 @@ const RecommendationsPage = () => {
 
   const fetchData = async () => {
     try {
-      const [recsRes, clausesRes] = await Promise.all([
-        axios.get(`${API}/recommendations`),
-        axios.get(`${API}/clauses`)
-      ]);
-      setRecommendations(recsRes.data);
+      const clausesRes = await axios.get(`${API}/clauses`);
       setClauses(clausesRes.data);
+      if (isSurveyor) {
+        setSurveyNotes(loadSurveyorNotes(user?.id));
+      } else {
+        const recsRes = await axios.get(`${API}/recommendations`);
+        setRecommendations(recsRes.data);
+      }
     } catch (error) {
       toast.error('Gagal memuat data');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSubmitSurveyNote = async (e) => {
+    e.preventDefault();
+    try {
+      if (editingNoteId) {
+        upsertSurveyorNote(user?.id, {
+          id: editingNoteId,
+          clause_id: noteForm.clause_id,
+          note_text: noteForm.note_text,
+        });
+        toast.success('Catatan berhasil diperbarui');
+      } else {
+        upsertSurveyorNote(user?.id, noteForm);
+        toast.success('Catatan berhasil ditambahkan');
+      }
+      setDialogOpen(false);
+      setEditingNoteId('');
+      setNoteForm({ clause_id: '', note_text: '' });
+      fetchData();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Gagal menyimpan catatan');
     }
   };
 
@@ -104,6 +137,148 @@ const RecommendationsPage = () => {
     return recommendations.filter((recommendation) => recommendation.status === status);
   };
 
+  const renderSurveyorView = () => (
+    <Layout>
+      <div className="space-y-6" data-testid="recommendations-page">
+        <section className="grid gap-5 xl:grid-cols-[1.25fr_0.95fr]">
+          <Card className="overflow-hidden rounded-[30px] border-0 bg-[linear-gradient(135deg,#20323a_0%,#33505a_58%,#446a77_100%)] text-white shadow-[0_32px_90px_rgba(32,50,58,0.24)]">
+            <CardContent className="p-7 md:p-8">
+              <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-cyan-100/75">Surveyor Notes</p>
+              <h1 className="mt-3 text-4xl font-extrabold leading-tight md:text-5xl">Catatan surveyor untuk setiap klausul.</h1>
+              <p className="mt-4 max-w-2xl text-sm leading-6 text-cyan-50/80 md:text-base">
+                Halaman ini khusus untuk surveyor. Isinya catatan lapangan dan ringkasan tindak lanjut per klausul, tanpa status rekomendasi auditor.
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="rounded-[30px] border-white/70 bg-white/80 shadow-[0_24px_70px_rgba(45,68,58,0.10)] backdrop-blur-xl">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg">Ringkasan Catatan</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
+                <div className="rounded-[20px] bg-slate-50 px-4 py-3">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-500">Total</p>
+                  <p className="mt-2 text-3xl font-extrabold text-slate-950">{surveyNotes.length}</p>
+                </div>
+                <div className="rounded-[20px] bg-sky-50 px-4 py-3">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-sky-700">Klausul</p>
+                  <p className="mt-2 text-3xl font-extrabold text-sky-800">{new Set(surveyNotes.map((item) => item.clause_id)).size}</p>
+                </div>
+                <div className="rounded-[20px] bg-emerald-50 px-4 py-3">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-emerald-700">Aktif</p>
+                  <p className="mt-2 text-3xl font-extrabold text-emerald-800">{clauses.length}</p>
+                </div>
+              </div>
+
+              <Button
+                onClick={() => setDialogOpen(true)}
+                className="h-12 rounded-[18px] bg-slate-950 hover:bg-slate-800"
+                data-testid="add-recommendation-button"
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Tambah Catatan
+              </Button>
+
+              <Dialog
+                open={dialogOpen}
+                onOpenChange={(open) => {
+                  setDialogOpen(open);
+                  if (!open) {
+                    setEditingNoteId('');
+                    setNoteForm({ clause_id: '', note_text: '' });
+                  }
+                }}
+              >
+                <DialogContent className="rounded-[28px]" data-testid="add-recommendation-dialog">
+                  <DialogHeader>
+                    <DialogTitle>{editingNoteId ? 'Ubah Catatan' : 'Tambah Catatan Baru'}</DialogTitle>
+                  </DialogHeader>
+                  <form onSubmit={handleSubmitSurveyNote} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="clause">Klausul</Label>
+                      <Select
+                        value={noteForm.clause_id}
+                        onValueChange={(value) => setNoteForm({ ...noteForm, clause_id: value })}
+                        required
+                      >
+                        <SelectTrigger className="h-12 rounded-[16px]" data-testid="recommendation-clause-select">
+                          <SelectValue placeholder="Pilih klausul" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {clauses.map((clause) => (
+                            <SelectItem key={clause.id} value={clause.id}>{clause.clause_number}: {clause.title}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="note_text">Catatan</Label>
+                      <Textarea
+                        id="note_text"
+                        data-testid="recommendation-text-input"
+                        placeholder="Tuliskan catatan surveyor..."
+                        value={noteForm.note_text}
+                        onChange={(e) => setNoteForm({ ...noteForm, note_text: e.target.value })}
+                        required
+                        rows={4}
+                        className="rounded-[16px]"
+                      />
+                    </div>
+                    <Button type="submit" className="h-12 w-full rounded-[18px] bg-emerald-700 hover:bg-emerald-800" data-testid="submit-recommendation-button">
+                      Simpan Catatan
+                    </Button>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            </CardContent>
+          </Card>
+        </section>
+
+        <Card className="rounded-[28px] border-white/70 bg-white/80 shadow-[0_22px_55px_rgba(43,67,58,0.10)]">
+          <CardHeader>
+            <CardTitle className="text-xl">Daftar Catatan</CardTitle>
+            <p className="text-sm text-slate-600">Catatan surveyor per klausul.</p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {surveyNotes.length === 0 ? (
+              <div className="rounded-[24px] border border-white/70 bg-white/80 px-4 py-10 text-center text-slate-500">
+                Belum ada catatan surveyor.
+              </div>
+            ) : (
+              surveyNotes.map((note) => {
+                const clause = clauses.find((item) => item.id === note.clause_id);
+                return (
+                  <div key={note.id} className="rounded-[24px] border border-slate-100 bg-slate-50/70 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-bold text-slate-900">{clause ? `${clause.clause_number}: ${clause.title}` : 'Unknown clause'}</p>
+                        <p className="mt-1 text-xs text-slate-500">{new Date(note.created_at).toLocaleString('id-ID')}</p>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="rounded-full px-3 text-xs text-slate-600 hover:bg-slate-100"
+                        onClick={() => {
+                          setEditingNoteId(note.id);
+                          setNoteForm({ clause_id: note.clause_id, note_text: note.note_text });
+                          setDialogOpen(true);
+                        }}
+                      >
+                        Edit
+                      </Button>
+                    </div>
+                    <p className="mt-3 text-sm leading-6 text-slate-700 whitespace-pre-line">{note.note_text}</p>
+                  </div>
+                );
+              })
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </Layout>
+  );
+
   if (loading) {
     return (
       <Layout>
@@ -114,6 +289,10 @@ const RecommendationsPage = () => {
         </div>
       </Layout>
     );
+  }
+
+  if (isSurveyor) {
+    return renderSurveyorView();
   }
 
   return (

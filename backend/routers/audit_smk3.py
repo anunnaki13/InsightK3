@@ -1,4 +1,5 @@
 import base64
+import html
 import io
 import logging
 import mimetypes
@@ -13,6 +14,7 @@ from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from pathlib import Path
 from typing import List, Optional
+from xml.etree import ElementTree as ET
 
 from bson.objectid import ObjectId
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
@@ -23,7 +25,7 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
 from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-from database import db, fs
+from database import db, ensure_mock_gridfs_loaded, fs
 from models.audit_models import (
     AuditClause,
     AuditClauseCreate,
@@ -37,17 +39,24 @@ from models.audit_models import (
     Recommendation,
     RecommendationCreate,
     RecommendationUpdate,
+    ReportGenerateRequest,
+    SurveyNote,
+    SurveyNoteCreate,
+    SurveyNoteUpdate,
     User,
     UserRole,
 )
 from routers.auth import get_current_user
 from services.ai_service import analyze_document_evidence
+from seed_from_excel import dataset_is_aligned
 from services.risk_scoring import enrich_risk_item, generate_risk_code
 
 router = APIRouter(prefix="/api")
 
 
 AUTO_RECOMMENDATION_SOURCE = "auto_auditor_assessment"
+EVIDENCE_ROOT = Path(__file__).resolve().parents[2] / "evidence"
+_evidence_file_index = None
 
 
 def _parse_datetime_fields(items: list[dict], *fields: str) -> list[dict]:
@@ -56,6 +65,89 @@ def _parse_datetime_fields(items: list[dict], *fields: str) -> list[dict]:
             if isinstance(item.get(field), str):
                 item[field] = datetime.fromisoformat(item[field])
     return items
+
+
+def _report_paragraph(text: str, style: ParagraphStyle) -> Paragraph:
+    return Paragraph((text or "").replace("\n", "<br/>"), style)
+
+
+def _format_report_date(value) -> str:
+    if not value:
+        return "-"
+    if isinstance(value, datetime):
+        return value.astimezone(timezone.utc).strftime("%d %b %Y")
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value).strftime("%d %b %Y")
+        except Exception:
+            return value
+    return str(value)
+
+
+def _get_evidence_file_index():
+    global _evidence_file_index
+    if _evidence_file_index is not None:
+        return _evidence_file_index
+
+    by_clause_name_size = {}
+    by_clause_name = {}
+    if EVIDENCE_ROOT.exists():
+        for path in EVIDENCE_ROOT.rglob("*"):
+            if not path.is_file():
+                continue
+            clause_numbers = [
+                part
+                for part in path.parts
+                if part.count(".") >= 2 and all(piece.isdigit() for piece in part.split(".") if piece)
+            ]
+            if not clause_numbers:
+                continue
+            clause_number = clause_numbers[-1]
+            try:
+                size = path.stat().st_size
+            except OSError:
+                continue
+            by_clause_name_size.setdefault((clause_number, path.name, size), []).append(path)
+            by_clause_name.setdefault((clause_number, path.name), []).append(path)
+
+    _evidence_file_index = {
+        "by_clause_name_size": by_clause_name_size,
+        "by_clause_name": by_clause_name,
+    }
+    return _evidence_file_index
+
+
+async def _get_or_recover_gridfs_file(doc: dict):
+    await ensure_mock_gridfs_loaded()
+    file_id = ObjectId(doc["file_id"])
+
+    try:
+        return fs.get(file_id)
+    except Exception as original_exc:
+        clause = await db.clauses.find_one({"id": doc.get("clause_id")}, {"_id": 0, "clause_number": 1})
+        clause_number = clause.get("clause_number") if clause else None
+        if not clause_number:
+            raise original_exc
+
+        index = _get_evidence_file_index()
+        filename = doc.get("filename") or ""
+        size = doc.get("size")
+        candidates = index["by_clause_name_size"].get((clause_number, filename, size), [])
+        if not candidates:
+            candidates = index["by_clause_name"].get((clause_number, filename), [])
+        if not candidates:
+            raise original_exc
+
+        path = candidates[0]
+        content = path.read_bytes()
+        fs.put(
+            content,
+            _id=file_id,
+            filename=filename,
+            content_type=_resolve_mime_type(filename, doc.get("mime_type")),
+        )
+        logging.info("Recovered GridFS file %s from %s", doc.get("file_id"), path)
+        return fs.get(file_id)
 
 
 def _resolve_mime_type(filename: str | None, mime_type: str | None) -> str:
@@ -109,7 +201,22 @@ def _is_effectively_empty_binary(content: bytes) -> bool:
 
 def _is_office_document(filename: str | None, mime_type: str | None) -> bool:
     extension = _get_extension(filename)
-    if extension in {".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".rtf", ".odt", ".ods", ".odp"}:
+    if extension in {
+        ".doc",
+        ".docx",
+        ".xls",
+        ".xlsx",
+        ".xlsm",
+        ".xlsb",
+        ".xltx",
+        ".xltm",
+        ".ppt",
+        ".pptx",
+        ".rtf",
+        ".odt",
+        ".ods",
+        ".odp",
+    }:
         return True
 
     resolved = _resolve_mime_type(filename, mime_type)
@@ -118,6 +225,10 @@ def _is_office_document(filename: str | None, mime_type: str | None) -> bool:
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "application/vnd.ms-excel",
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.ms-excel.sheet.macroenabled.12",
+        "application/vnd.ms-excel.sheet.binary.macroenabled.12",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.template",
+        "application/vnd.ms-excel.template.macroenabled.12",
         "application/vnd.ms-powerpoint",
         "application/vnd.openxmlformats-officedocument.presentationml.presentation",
         "application/rtf",
@@ -163,6 +274,118 @@ def _convert_office_to_pdf(content: bytes, filename: str) -> bytes:
         return pdf_path.read_bytes()
 
 
+def _parse_excel_openxml_preview(content: bytes, filename: str) -> bytes:
+    ns = {
+        "main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
+        "rel": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+        "pkgrel": "http://schemas.openxmlformats.org/package/2006/relationships",
+    }
+
+    def resolve_target(base_path: str, target: str) -> str:
+        if target.startswith("/"):
+            return target.lstrip("/")
+        base = Path(base_path).parent
+        return str((base / target).as_posix())
+
+    with zipfile.ZipFile(io.BytesIO(content)) as archive:
+        shared_strings = []
+        if "xl/sharedStrings.xml" in archive.namelist():
+            shared_root = ET.fromstring(archive.read("xl/sharedStrings.xml"))
+            for item in shared_root.findall("main:si", ns):
+                parts = [node.text or "" for node in item.findall(".//main:t", ns)]
+                shared_strings.append("".join(parts))
+
+        workbook_root = ET.fromstring(archive.read("xl/workbook.xml"))
+        workbook_rels_root = ET.fromstring(archive.read("xl/_rels/workbook.xml.rels"))
+        workbook_rel_map = {
+            rel.attrib.get("Id"): rel.attrib.get("Target")
+            for rel in workbook_rels_root.findall("pkgrel:Relationship", ns)
+        }
+
+        sheets_html = []
+        for sheet in workbook_root.findall("main:sheets/main:sheet", ns):
+            sheet_name = sheet.attrib.get("name", "Sheet")
+            relationship_id = sheet.attrib.get("{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id")
+            target = workbook_rel_map.get(relationship_id)
+            if not target:
+                continue
+            sheet_path = resolve_target("xl/workbook.xml", target)
+            if sheet_path not in archive.namelist():
+                continue
+
+            sheet_root = ET.fromstring(archive.read(sheet_path))
+            rows_html = []
+            row_count = 0
+            max_cells = 16
+            for row in sheet_root.findall("main:sheetData/main:row", ns):
+                cell_html = []
+                cells = row.findall("main:c", ns)
+                for cell in cells[:max_cells]:
+                    cell_type = cell.attrib.get("t")
+                    value_node = cell.find("main:v", ns)
+                    inline_node = cell.find("main:is/main:t", ns)
+                    value = ""
+                    if inline_node is not None:
+                        value = inline_node.text or ""
+                    elif value_node is not None:
+                        raw_value = value_node.text or ""
+                        if cell_type == "s":
+                            try:
+                                value = shared_strings[int(raw_value)]
+                            except Exception:
+                                value = raw_value
+                        else:
+                            value = raw_value
+                    cell_html.append(f"<td>{html.escape(str(value))}</td>")
+
+                if cell_html:
+                    rows_html.append("<tr>" + "".join(cell_html) + "</tr>")
+                    row_count += 1
+                if row_count >= 40:
+                    break
+
+            if rows_html:
+                sheets_html.append(
+                    (
+                        f"<section class='sheet'>"
+                        f"<h2>{html.escape(sheet_name)}</h2>"
+                        f"<div class='sheet-wrap'><table>{''.join(rows_html)}</table></div>"
+                        f"</section>"
+                    )
+                )
+
+        if not sheets_html:
+            raise RuntimeError(f"Tidak ada sheet yang bisa dibaca dari {filename}")
+
+    page = f"""<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{html.escape(filename)}</title>
+  <style>
+    body {{ font-family: Arial, sans-serif; margin: 0; background: #f8fafc; color: #0f172a; }}
+    .page {{ padding: 20px; }}
+    .sheet {{ background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; margin-bottom: 16px; }}
+    h1 {{ font-size: 18px; margin: 0 0 16px; }}
+    h2 {{ font-size: 15px; margin: 0 0 12px; }}
+    .sheet-wrap {{ overflow: auto; border: 1px solid #e2e8f0; border-radius: 8px; }}
+    table {{ border-collapse: collapse; min-width: 100%; background: #fff; }}
+    td {{ border: 1px solid #e2e8f0; padding: 8px 10px; font-size: 12px; vertical-align: top; white-space: pre-wrap; }}
+    .note {{ font-size: 12px; color: #475569; margin-bottom: 12px; }}
+  </style>
+</head>
+<body>
+  <div class="page">
+    <h1>{html.escape(filename)}</h1>
+    <div class="note">Preview Excel menampilkan isi sheet secara ringkas untuk dibaca di browser.</div>
+    {''.join(sheets_html)}
+  </div>
+</body>
+</html>"""
+    return page.encode("utf-8")
+
+
 def _extract_pdf_text(content: bytes) -> str:
     with tempfile.TemporaryDirectory(prefix="insightk3-pdf-text-") as workdir:
         pdf_path = Path(workdir) / "source.pdf"
@@ -201,7 +424,7 @@ def _extract_document_text(content: bytes, filename: str | None, mime_type: str 
             return _extract_pdf_text(content)
 
         if _is_office_document(filename, mime_type):
-            if extension in {".docx", ".xlsx", ".pptx", ".odt", ".ods", ".odp"} and not _looks_like_zip_container(content):
+            if extension in {".docx", ".xlsx", ".xlsm", ".xlsb", ".xltx", ".xltm", ".pptx", ".odt", ".ods", ".odp"} and not _looks_like_zip_container(content):
                 logging.warning(
                     "Skipping Office conversion for %s because ZIP-based document signature is invalid",
                     filename or "document",
@@ -311,6 +534,8 @@ async def upload_document(
     if not clause:
         raise HTTPException(status_code=404, detail="Clause not found")
 
+    await ensure_mock_gridfs_loaded()
+
     content = await file.read()
     resolved_mime_type = _resolve_mime_type(file.filename, file.content_type)
 
@@ -364,11 +589,12 @@ async def download_all_documents(clause_id: str, current_user: User = Depends(ge
         raise HTTPException(status_code=404, detail="No documents found for this clause")
 
     try:
+        await ensure_mock_gridfs_loaded()
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
             for doc in docs:
                 try:
-                    file_data = fs.get(ObjectId(doc["file_id"]))
+                    file_data = await _get_or_recover_gridfs_file(doc)
                     zip_file.writestr(doc["filename"], file_data.read())
                 except Exception as exc:
                     logging.warning(f"Failed to add {doc['filename']} to ZIP: {exc}")
@@ -386,54 +612,16 @@ async def download_all_documents(clause_id: str, current_user: User = Depends(ge
 
 @router.get("/audit/download-all-evidence")
 async def download_all_evidence(current_user: User = Depends(get_current_user)):
-    try:
-        criteria_list = await db.criteria.find({}, {"_id": 0}).sort("order", 1).to_list(100)
-        if not criteria_list:
-            raise HTTPException(status_code=404, detail="No criteria found")
-
-        zip_buffer = io.BytesIO()
-        total_files = 0
-        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-            for criteria in criteria_list:
-                clauses = await db.clauses.find({"criteria_id": criteria["id"]}, {"_id": 0}).to_list(500)
-                for clause in clauses:
-                    docs = await db.documents.find({"clause_id": clause["id"]}, {"_id": 0}).to_list(100)
-                    if not docs:
-                        continue
-
-                    criteria_folder = f"{criteria['order']:02d}_Kriteria_{criteria['name'].replace('/', '-')}"
-                    clause_folder = f"Klausul_{clause['clause_number']}_{clause['title'][:50].replace('/', '-')}"
-
-                    for doc in docs:
-                        try:
-                            file_data = fs.get(ObjectId(doc["file_id"]))
-                            file_path = f"{criteria_folder}/{clause_folder}/{doc['filename']}"
-                            zip_file.writestr(file_path, file_data.read())
-                            total_files += 1
-                        except Exception as exc:
-                            logging.warning(f"Failed to add {doc['filename']} to ZIP: {exc}")
-
-        if total_files == 0:
-            raise HTTPException(status_code=404, detail="No evidence documents found")
-
-        zip_buffer.seek(0)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        zip_filename = f"All_Evidence_SMK3_PLTU_Tenayan_{timestamp}.zip"
-        return StreamingResponse(
-            zip_buffer,
-            media_type="application/zip",
-            headers={"Content-Disposition": f'attachment; filename="{zip_filename}"'},
-        )
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logging.error(f"Error creating all evidence ZIP: {exc}")
-        raise HTTPException(status_code=500, detail=f"Error creating ZIP file: {exc}")
+    raise HTTPException(
+        status_code=400,
+        detail="Download massal semua evidence dinonaktifkan agar server tetap stabil. Gunakan export per kriteria.",
+    )
 
 
 @router.get("/audit/download-criteria-evidence/{criteria_id}")
 async def download_criteria_evidence(criteria_id: str, current_user: User = Depends(get_current_user)):
     try:
+        await ensure_mock_gridfs_loaded()
         criteria = await db.criteria.find_one({"id": criteria_id}, {"_id": 0})
         if not criteria:
             raise HTTPException(status_code=404, detail="Criteria not found")
@@ -454,7 +642,7 @@ async def download_criteria_evidence(criteria_id: str, current_user: User = Depe
                 clause_folder = f"Klausul_{clause['clause_number']}_{clause['title'][:50].replace('/', '-')}"
                 for doc in docs:
                     try:
-                        file_data = fs.get(ObjectId(doc["file_id"]))
+                        file_data = await _get_or_recover_gridfs_file(doc)
                         file_path = f"{criteria_folder}/{clause_folder}/{doc['filename']}"
                         zip_file.writestr(file_path, file_data.read())
                         total_files += 1
@@ -485,6 +673,7 @@ async def hard_reset_audit(current_user: User = Depends(get_current_user)):
         raise HTTPException(status_code=403, detail="Only admins can perform hard reset")
 
     try:
+        await ensure_mock_gridfs_loaded()
         docs_count = await db.documents.count_documents({})
         results_count = await db.audit_results.count_documents({})
         recommendations_count = await db.recommendations.count_documents({})
@@ -528,7 +717,7 @@ async def download_document(doc_id: str, current_user: User = Depends(get_curren
         raise HTTPException(status_code=404, detail="Document not found")
 
     try:
-        file_data = fs.get(ObjectId(doc["file_id"]))
+        file_data = await _get_or_recover_gridfs_file(doc)
         return StreamingResponse(
             io.BytesIO(file_data.read()),
             media_type=_resolve_mime_type(doc.get("filename"), doc.get("mime_type")),
@@ -545,8 +734,18 @@ async def preview_document(doc_id: str, current_user: User = Depends(get_current
         raise HTTPException(status_code=404, detail="Document not found")
 
     try:
-        file_data = fs.get(ObjectId(doc["file_id"]))
+        file_data = await _get_or_recover_gridfs_file(doc)
         file_bytes = file_data.read()
+        extension = _get_extension(doc.get("filename"))
+        if extension in {".xlsx", ".xlsm", ".xltx", ".xltm"}:
+            html_bytes = _parse_excel_openxml_preview(file_bytes, doc.get("filename") or "document")
+            preview_name = f'{Path(doc["filename"]).stem}.html'
+            return StreamingResponse(
+                io.BytesIO(html_bytes),
+                media_type="text/html; charset=utf-8",
+                headers={"Content-Disposition": f'inline; filename="{preview_name}"'},
+            )
+
         if _is_office_document(doc.get("filename"), doc.get("mime_type")):
             pdf_bytes = _convert_office_to_pdf(file_bytes, doc.get("filename") or "document")
             preview_name = f'{Path(doc["filename"]).stem}.pdf'
@@ -573,6 +772,7 @@ async def delete_document(doc_id: str, current_user: User = Depends(get_current_
 
     clause_id = doc["clause_id"]
     try:
+        await ensure_mock_gridfs_loaded()
         fs.delete(ObjectId(doc["file_id"]))
     except Exception as exc:
         logging.warning(f"Failed to delete file from GridFS: {exc}")
@@ -608,7 +808,7 @@ async def analyze_clause(clause_id: str, current_user: User = Depends(get_curren
     try:
         documents_for_ai = []
         for doc in documents:
-            file_data = fs.get(ObjectId(doc["file_id"]))
+            file_data = await _get_or_recover_gridfs_file(doc)
             file_bytes = file_data.read()
             extracted_text = _extract_document_text(
                 content=file_bytes,
@@ -649,7 +849,13 @@ async def analyze_clause(clause_id: str, current_user: User = Depends(get_curren
         return result
     except Exception as exc:
         logging.error(f"Error analyzing clause: {exc}")
-        raise HTTPException(status_code=500, detail=f"Error analyzing documents: {exc}")
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Analisis AI gagal diproses. Evidence tetap aman dan penilaian auditor tetap bisa diisi manual. "
+                f"Detail teknis: {exc}"
+            ),
+        )
 
 
 @router.get("/audit/results/{clause_id}", response_model=Optional[AuditResult])
@@ -678,8 +884,6 @@ async def update_auditor_assessment(
         raise HTTPException(status_code=403, detail="Only auditors can submit assessments")
 
     result = await db.audit_results.find_one({"clause_id": clause_id})
-    if not result:
-        raise HTTPException(status_code=404, detail="Audit result not found. Please run AI analysis first.")
 
     requires_agreed_date = assessment.auditor_status in ("non-confirm-major", "non-confirm-minor")
     agreed_date_value = (assessment.agreed_date or "").strip()
@@ -702,7 +906,22 @@ async def update_auditor_assessment(
     }
     update_data["agreed_date"] = datetime.fromisoformat(agreed_date_value).isoformat() if agreed_date_value else None
 
-    await db.audit_results.update_one({"clause_id": clause_id}, {"$set": update_data})
+    if result:
+        await db.audit_results.update_one({"clause_id": clause_id}, {"$set": update_data})
+    else:
+        placeholder = AuditResult(
+            clause_id=clause_id,
+            score=0.0,
+            status="Belum Dianalisis AI",
+            reasoning="Belum ada hasil analisis AI. Penilaian auditor diisi manual.",
+            feedback="Belum ada analisis AI.",
+            improvement_suggestions="Gunakan penilaian auditor sebagai dasar tindak lanjut.",
+            audited_by=None,
+        )
+        placeholder_dict = placeholder.model_dump()
+        placeholder_dict["audited_at"] = placeholder_dict["audited_at"].isoformat()
+        placeholder_dict.update(update_data)
+        await db.audit_results.insert_one(placeholder_dict)
 
     clause = await db.clauses.find_one({"id": clause_id}, {"_id": 0})
 
@@ -798,6 +1017,19 @@ async def get_dashboard(current_user: User = Depends(get_current_user)):
     total_clauses = await db.clauses.count_documents({})
     results = await db.audit_results.find({}, {"_id": 0}).to_list(500)
     audited_clauses = len(results)
+    documents = await db.documents.find({}, {"_id": 0, "clause_id": 1}).to_list(5000)
+    total_evidence_files = len(documents)
+    documented_clause_ids = {document["clause_id"] for document in documents}
+    document_count_by_clause = {}
+    for document in documents:
+        clause_id = document.get("clause_id")
+        if not clause_id:
+            continue
+        document_count_by_clause[clause_id] = document_count_by_clause.get(clause_id, 0) + 1
+    clauses = await db.clauses.find({}, {"_id": 0}).to_list(500)
+    clause_map = {clause["id"]: clause for clause in clauses}
+    criteria_list = await db.criteria.find({}, {"_id": 0}).sort("order", 1).to_list(100)
+    criteria_map = {criteria["id"]: criteria for criteria in criteria_list}
 
     results_with_auditor = [result for result in results if result.get("auditor_status")]
     auditor_assessed_count = len(results_with_auditor)
@@ -805,19 +1037,41 @@ async def get_dashboard(current_user: User = Depends(get_current_user)):
     non_confirm_major = sum(1 for result in results_with_auditor if result.get("auditor_status") == "non-confirm-major")
     non_confirm_minor = sum(1 for result in results_with_auditor if result.get("auditor_status") == "non-confirm-minor")
 
+    def _build_non_confirm_item(result: dict) -> dict:
+        clause = clause_map.get(result["clause_id"], {})
+        criteria = criteria_map.get(clause.get("criteria_id"), {})
+        return {
+            "id": result.get("id"),
+            "clause_id": result.get("clause_id"),
+            "clause_number": clause.get("clause_number", "Unknown"),
+            "clause_title": clause.get("title", "Unknown"),
+            "criteria_id": clause.get("criteria_id"),
+            "criteria_name": criteria.get("name", "Unknown"),
+            "auditor_status": result.get("auditor_status"),
+            "score": result.get("score", 0),
+            "auditor_notes": result.get("auditor_notes", ""),
+            "audited_at": result.get("audited_at"),
+            "agreed_date": result.get("agreed_date"),
+        }
+
+    non_confirm_items = [_build_non_confirm_item(result) for result in results_with_auditor if result.get("auditor_status") in ("non-confirm-major", "non-confirm-minor")]
+    non_confirm_major_items = [item for item in non_confirm_items if item["auditor_status"] == "non-confirm-major"]
+    non_confirm_minor_items = [item for item in non_confirm_items if item["auditor_status"] == "non-confirm-minor"]
+
     achievement_percentage = (confirm_count / total_clauses * 100) if total_clauses > 0 else 0
     total_score = sum(result["score"] for result in results)
     average_score = total_score / audited_clauses if audited_clauses > 0 else 0
     compliant = sum(1 for result in results if result["status"] == "Sesuai")
     non_compliant = audited_clauses - compliant
 
-    criteria_list = await db.criteria.find({}, {"_id": 0}).sort("order", 1).to_list(100)
     criteria_scores = []
     for criteria in criteria_list:
         clauses = await db.clauses.find({"criteria_id": criteria["id"]}, {"_id": 0}).to_list(500)
         clause_ids = [clause["id"] for clause in clauses]
         criteria_results = [result for result in results if result["clause_id"] in clause_ids]
         criteria_with_auditor = [result for result in criteria_results if result.get("auditor_status")]
+        documented_clauses = sum(1 for clause_id in clause_ids if clause_id in documented_clause_ids)
+        evidence_files = sum(document_count_by_clause.get(clause_id, 0) for clause_id in clause_ids)
 
         criteria_confirm = sum(1 for result in criteria_with_auditor if result.get("auditor_status") == "confirm")
         criteria_nc_major = sum(1 for result in criteria_with_auditor if result.get("auditor_status") == "non-confirm-major")
@@ -826,6 +1080,7 @@ async def get_dashboard(current_user: User = Depends(get_current_user)):
         total_criteria_clauses = len(clauses)
         audited_criteria_clauses = len(criteria_results)
         criteria_percentage = (criteria_confirm / total_criteria_clauses * 100) if total_criteria_clauses > 0 else 0
+        documentation_percentage = (documented_clauses / total_criteria_clauses * 100) if total_criteria_clauses > 0 else 0
 
         if criteria_results:
             avg = sum(result["score"] for result in criteria_results) / len(criteria_results)
@@ -850,7 +1105,10 @@ async def get_dashboard(current_user: User = Depends(get_current_user)):
                 "name": criteria["name"],
                 "average_score": round(avg, 2),
                 "achievement_percentage": round(criteria_percentage, 2),
+                "documentation_percentage": round(documentation_percentage, 2),
                 "total_clauses": total_criteria_clauses,
+                "documented_clauses": documented_clauses,
+                "evidence_files": evidence_files,
                 "audited_clauses": audited_criteria_clauses,
                 "auditor_assessed_clauses": len(criteria_with_auditor),
                 "confirm_count": criteria_confirm,
@@ -864,6 +1122,7 @@ async def get_dashboard(current_user: User = Depends(get_current_user)):
 
     return {
         "total_clauses": total_clauses,
+        "total_evidence_files": total_evidence_files,
         "audited_clauses": audited_clauses,
         "auditor_assessed_clauses": auditor_assessed_count,
         "confirm_count": confirm_count,
@@ -874,6 +1133,9 @@ async def get_dashboard(current_user: User = Depends(get_current_user)):
         "compliant_clauses": compliant,
         "non_compliant_clauses": non_compliant,
         "criteria_scores": criteria_scores,
+        "non_confirm_items": non_confirm_items,
+        "non_confirm_major_items": non_confirm_major_items,
+        "non_confirm_minor_items": non_confirm_minor_items,
     }
 
 
@@ -963,135 +1225,462 @@ async def get_notifications(current_user: User = Depends(get_current_user)):
     return {"notifications": sorted(notifications, key=lambda item: item["days_left"])}
 
 
+async def _generate_surveyor_report(current_user: User) -> dict:
+    buffer = BytesIO()
+    document = SimpleDocTemplate(buffer, pagesize=A4)
+    story = []
+    styles = getSampleStyleSheet()
+
+    title_style = ParagraphStyle(
+        "SurveyorTitle",
+        parent=styles["Heading1"],
+        fontSize=18,
+        textColor=colors.HexColor("#1a1a1a"),
+        spaceAfter=18,
+        alignment=1,
+    )
+    heading_style = ParagraphStyle(
+        "SurveyorHeading",
+        parent=styles["Heading2"],
+        fontSize=14,
+        textColor=colors.HexColor("#2c3e50"),
+        spaceAfter=10,
+    )
+    cell_style = ParagraphStyle(
+        "SurveyorCell",
+        parent=styles["BodyText"],
+        fontSize=8.5,
+        leading=10,
+        textColor=colors.HexColor("#1f2937"),
+    )
+
+    story.append(Paragraph("Laporan Catatan Surveyor", title_style))
+    story.append(Paragraph(f"Disusun oleh: {current_user.name}", styles["Normal"]))
+    story.append(Paragraph(f"Tanggal: {datetime.now(timezone.utc).strftime('%d %B %Y')}", styles["Normal"]))
+    story.append(Spacer(1, 0.25 * inch))
+
+    clauses = await db.clauses.find({}, {"_id": 0}).to_list(1000)
+    clause_map = {clause["id"]: clause for clause in clauses}
+    documents = await db.documents.find({}, {"_id": 0}).to_list(5000)
+    notes = await db.survey_notes.find({"created_by": current_user.id}, {"_id": 0}).to_list(1000)
+
+    document_counts = {}
+    documents_by_clause = {}
+    for document_item in documents:
+        clause_id = document_item.get("clause_id")
+        if clause_id:
+            document_counts[clause_id] = document_counts.get(clause_id, 0) + 1
+            documents_by_clause.setdefault(clause_id, []).append(document_item)
+
+    note_counts = {}
+    for note in notes:
+        clause_id = note.get("clause_id")
+        if clause_id:
+            note_counts[clause_id] = note_counts.get(clause_id, 0) + 1
+
+    documented_clauses = sum(1 for clause in clauses if document_counts.get(clause["id"], 0) > 0)
+    total_documents = sum(document_counts.values())
+
+    story.append(Paragraph("Ringkasan Evidence", heading_style))
+    summary_data = [
+        ["Metrik", "Nilai"],
+        ["Total Klausul", str(len(clauses))],
+        ["Klausul dengan Evidence", str(documented_clauses)],
+        ["Total Evidence Terinput", str(total_documents)],
+        ["Total Catatan Surveyor", str(len(notes))],
+    ]
+    summary_table = Table(summary_data, colWidths=[3.1 * inch, 2.0 * inch])
+    summary_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0f766e")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, 0), 11),
+                ("BACKGROUND", (0, 1), (-1, -1), colors.white),
+                ("GRID", (0, 0), (-1, -1), 0.75, colors.HexColor("#cbd5e1")),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ]
+        )
+    )
+    story.append(summary_table)
+    story.append(Spacer(1, 0.25 * inch))
+
+    story.append(Paragraph("Evidence dan Catatan per Klausul", heading_style))
+    relevant_clause_ids = [
+        clause["id"]
+        for clause in clauses
+        if document_counts.get(clause["id"], 0) > 0 or note_counts.get(clause["id"], 0) > 0
+    ]
+    if relevant_clause_ids:
+        for clause_id in sorted(
+            relevant_clause_ids,
+            key=lambda cid: (clause_map.get(cid, {}).get("criteria_id", ""), clause_map.get(cid, {}).get("clause_number", "")),
+        ):
+            clause = clause_map.get(clause_id, {})
+            clause_documents = documents_by_clause.get(clause_id, [])
+            clause_notes = [note for note in notes if note.get("clause_id") == clause_id]
+
+            story.append(Paragraph(f"<b>{clause.get('clause_number', 'Unknown')} - {clause.get('title', 'Unknown')}</b>", styles["Normal"]))
+            story.append(
+                Paragraph(
+                    f"Evidence terinput: <b>{len(clause_documents)}</b> | Catatan surveyor: <b>{len(clause_notes)}</b>",
+                    styles["BodyText"],
+                )
+            )
+
+            if clause_documents:
+                story.append(Paragraph("<b>Daftar evidence:</b>", styles["BodyText"]))
+                for document_item in clause_documents:
+                    uploaded_at = document_item.get("uploaded_at")
+                    if isinstance(uploaded_at, str):
+                        try:
+                            uploaded_at = datetime.fromisoformat(uploaded_at)
+                        except Exception:
+                            uploaded_at = None
+                    uploaded_text = uploaded_at.strftime("%d %B %Y %H:%M") if uploaded_at else "-"
+                    story.append(
+                        Paragraph(
+                            f"- {document_item.get('filename', 'Unknown file')} ({uploaded_text})",
+                            styles["BodyText"],
+                        )
+                    )
+
+            if clause_notes:
+                story.append(Paragraph("<b>Catatan surveyor:</b>", styles["BodyText"]))
+                for note in sorted(clause_notes, key=lambda item: item.get("created_at") or ""):
+                    created_at = note.get("created_at")
+                    if isinstance(created_at, str):
+                        try:
+                            created_at = datetime.fromisoformat(created_at)
+                        except Exception:
+                            created_at = None
+                    created_text = created_at.strftime("%d %B %Y %H:%M") if created_at else "-"
+                    story.append(Paragraph(f"- {note.get('note_text', '')}", styles["BodyText"]))
+                    story.append(Paragraph(f"<font size='8'>Dicatat: {created_text}</font>", styles["Normal"]))
+
+            story.append(Spacer(1, 0.18 * inch))
+    else:
+        story.append(Paragraph("Belum ada evidence atau catatan surveyor untuk ditampilkan.", styles["Normal"]))
+
+    document.build(story)
+    pdf_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
+    buffer.close()
+    return {
+        "filename": f"Laporan_Catatan_Surveyor_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+        "content": pdf_base64,
+        "content_type": "application/pdf",
+    }
+
+
+@router.post("/survey-notes", response_model=SurveyNote)
+async def create_survey_note(data: SurveyNoteCreate, current_user: User = Depends(get_current_user)):
+    if current_user.role != UserRole.SURVEYOR:
+        raise HTTPException(status_code=403, detail="Only surveyors can create notes")
+
+    clause = await db.clauses.find_one({"id": data.clause_id}, {"_id": 0})
+    if not clause:
+        raise HTTPException(status_code=404, detail="Clause not found")
+
+    note = SurveyNote(
+        clause_id=data.clause_id,
+        note_text=data.note_text.strip(),
+        created_by=current_user.id,
+    )
+    note_dict = note.model_dump()
+    note_dict["created_at"] = note_dict["created_at"].isoformat()
+    if note_dict.get("updated_at"):
+        note_dict["updated_at"] = note_dict["updated_at"].isoformat()
+    await db.survey_notes.insert_one(note_dict)
+    return note
+
+
+@router.get("/survey-notes", response_model=List[SurveyNote])
+async def get_survey_notes(
+    clause_id: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+):
+    query = {}
+    if clause_id:
+        query["clause_id"] = clause_id
+
+    notes = await db.survey_notes.find(query, {"_id": 0}).to_list(500)
+    return _parse_datetime_fields(notes, "created_at", "updated_at")
+
+
+@router.put("/survey-notes/{note_id}", response_model=SurveyNote)
+async def update_survey_note(note_id: str, data: SurveyNoteUpdate, current_user: User = Depends(get_current_user)):
+    if current_user.role != UserRole.SURVEYOR:
+        raise HTTPException(status_code=403, detail="Only surveyors can update notes")
+
+    update_data = {
+        "note_text": data.note_text.strip(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    result = await db.survey_notes.update_one({"id": note_id, "created_by": current_user.id}, {"$set": update_data})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Note not found")
+
+    note = await db.survey_notes.find_one({"id": note_id}, {"_id": 0})
+    if isinstance(note.get("created_at"), str):
+        note["created_at"] = datetime.fromisoformat(note["created_at"])
+    if isinstance(note.get("updated_at"), str):
+        note["updated_at"] = datetime.fromisoformat(note["updated_at"])
+    return SurveyNote(**note)
+
+
 @router.post("/reports/generate")
-async def generate_report(current_user: User = Depends(get_current_user)):
+async def generate_report(
+    payload: Optional[ReportGenerateRequest] = None,
+    current_user: User = Depends(get_current_user),
+):
     try:
+        if current_user.role == UserRole.SURVEYOR:
+            return await _generate_surveyor_report(current_user)
+
         buffer = BytesIO()
-        document = SimpleDocTemplate(buffer, pagesize=A4)
+        document = SimpleDocTemplate(
+            buffer,
+            pagesize=A4,
+            leftMargin=32,
+            rightMargin=32,
+            topMargin=32,
+            bottomMargin=32,
+        )
         story = []
         styles = getSampleStyleSheet()
+        detail_mode = (payload.detail_mode if payload else "all").strip().lower()
+        detail_mode = "findings" if detail_mode == "findings" else "all"
 
         title_style = ParagraphStyle(
-            "CustomTitle",
+            "ReportTitle",
             parent=styles["Heading1"],
-            fontSize=18,
-            textColor=colors.HexColor("#1a1a1a"),
-            spaceAfter=30,
-            alignment=1,
+            fontSize=22,
+            leading=26,
+            textColor=colors.HexColor("#0f172a"),
+            spaceAfter=10,
         )
-        heading_style = ParagraphStyle(
-            "CustomHeading",
+        subtitle_style = ParagraphStyle(
+            "ReportSubtitle",
+            parent=styles["BodyText"],
+            fontSize=10.5,
+            leading=14,
+            textColor=colors.HexColor("#475569"),
+            spaceAfter=18,
+        )
+        section_style = ParagraphStyle(
+            "ReportSection",
             parent=styles["Heading2"],
-            fontSize=14,
-            textColor=colors.HexColor("#2c3e50"),
-            spaceAfter=12,
+            fontSize=13,
+            leading=16,
+            textColor=colors.HexColor("#0f172a"),
+            spaceAfter=10,
+        )
+        body_style = ParagraphStyle(
+            "ReportBody",
+            parent=styles["BodyText"],
+            fontSize=9,
+            leading=12,
+            textColor=colors.HexColor("#334155"),
+        )
+        small_style = ParagraphStyle(
+            "ReportSmall",
+            parent=styles["BodyText"],
+            fontSize=8,
+            leading=10,
+            textColor=colors.HexColor("#64748b"),
+        )
+        table_cell_style = ParagraphStyle(
+            "ReportTableCell",
+            parent=body_style,
+            fontSize=8.5,
+            leading=10.5,
+            wordWrap="CJK",
+        )
+        table_head_style = ParagraphStyle(
+            "ReportTableHead",
+            parent=body_style,
+            fontSize=8.5,
+            leading=10,
+            textColor=colors.whitesmoke,
+            alignment=1,
         )
 
         story.append(Paragraph("Laporan Audit SMK3", title_style))
-        story.append(Paragraph(f"Tanggal: {datetime.now(timezone.utc).strftime('%d %B %Y')}", styles["Normal"]))
-        story.append(Spacer(1, 0.3 * inch))
+        story.append(
+            Paragraph(
+                f"Mode detail: {'Semua detail klausul' if detail_mode == 'all' else 'Temuan / non-confirm saja'}"
+                f"<br/>Tanggal generate: {datetime.now(timezone.utc).strftime('%d %B %Y %H:%M UTC')}",
+                subtitle_style,
+            )
+        )
 
         dashboard = await get_dashboard(current_user)
         dashboard_data = dashboard if isinstance(dashboard, dict) else dashboard.model_dump()
 
-        story.append(Paragraph("Ringkasan Audit", heading_style))
+        story.append(Paragraph("Ringkasan Audit", section_style))
         summary_data = [
-            ["Metrik", "Nilai"],
-            ["Total Klausul", str(dashboard_data["total_clauses"])],
-            ["Klausul Teraudit", str(dashboard_data["audited_clauses"])],
-            ["Klausul Dinilai Auditor", str(dashboard_data["auditor_assessed_clauses"])],
-            ["", ""],
-            ["Pencapaian Audit (Auditor)", f"{dashboard_data['achievement_percentage']:.1f}%"],
-            ["Klausul Confirm", str(dashboard_data["confirm_count"])],
-            ["Klausul Non-Confirm Minor", str(dashboard_data["non_confirm_minor_count"])],
-            ["Klausul Non-Confirm Major", str(dashboard_data["non_confirm_major_count"])],
-            ["", ""],
-            ["Rata-rata Skor AI (Referensi)", f"{dashboard_data['average_score']:.2f}"],
+            [
+                _report_paragraph("<b>Total Klausul</b><br/>Ruang lingkup audit", table_cell_style),
+                _report_paragraph(f"<b>{dashboard_data['total_clauses']}</b>", table_cell_style),
+                _report_paragraph("<b>Klausul Teraudit</b><br/>Sudah diproses", table_cell_style),
+                _report_paragraph(f"<b>{dashboard_data['audited_clauses']}</b>", table_cell_style),
+            ],
+            [
+                _report_paragraph("<b>Dinilai Auditor</b><br/>Keputusan final", table_cell_style),
+                _report_paragraph(f"<b>{dashboard_data['auditor_assessed_clauses']}</b>", table_cell_style),
+                _report_paragraph("<b>Pencapaian Audit</b><br/>Berdasarkan auditor", table_cell_style),
+                _report_paragraph(f"<b>{dashboard_data['achievement_percentage']:.1f}%</b>", table_cell_style),
+            ],
+            [
+                _report_paragraph("<b>Confirm</b>", table_cell_style),
+                _report_paragraph(f"<b>{dashboard_data['confirm_count']}</b>", table_cell_style),
+                _report_paragraph("<b>NC Minor / NC Major</b>", table_cell_style),
+                _report_paragraph(
+                    f"<b>{dashboard_data['non_confirm_minor_count']} / {dashboard_data['non_confirm_major_count']}</b>",
+                    table_cell_style,
+                ),
+            ],
+            [
+                _report_paragraph("<b>Skor AI Rata-rata</b><br/>Referensi analisis", table_cell_style),
+                _report_paragraph(f"<b>{dashboard_data['average_score']:.2f}</b>", table_cell_style),
+                _report_paragraph("<b>Mode Laporan</b>", table_cell_style),
+                _report_paragraph("<b>Semua Detail</b>" if detail_mode == "all" else "<b>Temuan Saja</b>", table_cell_style),
+            ],
         ]
 
-        summary_table = Table(summary_data, colWidths=[3 * inch, 2 * inch])
+        summary_table = Table(summary_data, colWidths=[2.15 * inch, 1.0 * inch, 2.15 * inch, 1.0 * inch])
         summary_table.setStyle(
             TableStyle(
                 [
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#3498db")),
-                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
-                    ("ALIGN", (0, 0), (-1, -1), "LEFT"),
-                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                    ("FONTSIZE", (0, 0), (-1, 0), 12),
-                    ("BOTTOMPADDING", (0, 0), (-1, 0), 12),
-                    ("BACKGROUND", (0, 1), (-1, -1), colors.beige),
-                    ("GRID", (0, 0), (-1, -1), 1, colors.black),
+                    ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
+                    ("BOX", (0, 0), (-1, -1), 1, colors.HexColor("#cbd5e1")),
+                    ("INNERGRID", (0, 0), (-1, -1), 0.75, colors.HexColor("#dbe2ea")),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 10),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+                    ("TOPPADDING", (0, 0), (-1, -1), 10),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
                 ]
             )
         )
 
         story.append(summary_table)
-        story.append(Spacer(1, 0.3 * inch))
-        story.append(Paragraph("Skor Per Kriteria", heading_style))
+        story.append(Spacer(1, 0.22 * inch))
+        story.append(Paragraph("Skor Per Kriteria", section_style))
 
-        criteria_data = [["Kriteria", "Pencapaian", "Confirm", "Status", "Progress"]]
+        criteria_data = [[
+            _report_paragraph("<b>Kriteria</b>", table_head_style),
+            _report_paragraph("<b>Pencapaian</b>", table_head_style),
+            _report_paragraph("<b>Confirm</b>", table_head_style),
+            _report_paragraph("<b>Status</b>", table_head_style),
+            _report_paragraph("<b>Progress</b>", table_head_style),
+        ]]
         for item in dashboard_data["criteria_scores"]:
             strength = "Memuaskan" if item["strength"] == "strong" else "Baik" if item["strength"] == "moderate" else "Kurang"
             criteria_data.append(
                 [
-                    item["name"],
-                    f"{item['achievement_percentage']:.1f}%",
-                    f"{item.get('confirm_count', 0)}",
-                    strength,
-                    f"{item['audited_clauses']}/{item['total_clauses']}",
+                    _report_paragraph(item["name"], table_cell_style),
+                    _report_paragraph(f"{item['achievement_percentage']:.1f}%", table_cell_style),
+                    _report_paragraph(f"{item.get('confirm_count', 0)}", table_cell_style),
+                    _report_paragraph(strength, table_cell_style),
+                    _report_paragraph(f"{item['audited_clauses']}/{item['total_clauses']}", table_cell_style),
                 ]
             )
 
-        criteria_table = Table(criteria_data, colWidths=[2 * inch, 1 * inch, 0.8 * inch, 1 * inch, 0.9 * inch])
+        criteria_table = Table(criteria_data, colWidths=[2.95 * inch, 0.95 * inch, 0.65 * inch, 0.9 * inch, 0.85 * inch], repeatRows=1)
         criteria_table.setStyle(
             TableStyle(
                 [
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2ecc71")),
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0f766e")),
                     ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
-                    ("ALIGN", (0, 0), (-1, -1), "LEFT"),
-                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                    ("FONTSIZE", (0, 0), (-1, 0), 11),
-                    ("BOTTOMPADDING", (0, 0), (-1, 0), 12),
                     ("BACKGROUND", (0, 1), (-1, -1), colors.white),
-                    ("GRID", (0, 0), (-1, -1), 1, colors.grey),
+                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+                    ("BOX", (0, 0), (-1, -1), 1, colors.HexColor("#cbd5e1")),
+                    ("INNERGRID", (0, 0), (-1, -1), 0.75, colors.HexColor("#dbe2ea")),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                    ("TOPPADDING", (0, 0), (-1, -1), 8),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
                 ]
             )
         )
 
         story.append(criteria_table)
         story.append(PageBreak())
-        story.append(Paragraph("Detail Hasil Audit", heading_style))
+        story.append(Paragraph("Detail Hasil Audit", section_style))
 
         results = await db.audit_results.find({}, {"_id": 0}).to_list(500)
+        results = sorted(results, key=lambda item: item.get("clause_id", ""))
+        detail_results = []
         for result in results:
+            if detail_mode == "findings" and result.get("auditor_status") not in {"non-confirm-major", "non-confirm-minor"}:
+                continue
+            detail_results.append(result)
+
+        if not detail_results:
+            story.append(Paragraph("Tidak ada detail klausul yang sesuai dengan filter laporan.", body_style))
+
+        for result in detail_results:
             clause = await db.clauses.find_one({"id": result["clause_id"]}, {"_id": 0})
             if not clause:
                 continue
 
-            story.append(Paragraph(f"<b>Klausul {clause['clause_number']}: {clause['title']}</b>", styles["Normal"]))
+            status_text = {
+                "confirm": "Confirm",
+                "non-confirm-minor": "Non-Confirm Minor",
+                "non-confirm-major": "Non-Confirm Major",
+            }.get(result.get("auditor_status"), "Belum Dinilai Auditor")
+
+            detail_table = Table(
+                [
+                    [
+                        _report_paragraph(
+                            f"<b>Klausul {clause['clause_number']}</b><br/>{clause['title']}",
+                            table_cell_style,
+                        ),
+                        _report_paragraph(
+                            f"<b>Status Auditor</b><br/>{status_text}<br/><b>Skor AI</b><br/>{result['score']:.2f}",
+                            table_cell_style,
+                        ),
+                    ],
+                    [
+                        _report_paragraph(f"<b>Catatan Auditor</b><br/>{result.get('auditor_notes') or '-'}", table_cell_style),
+                        _report_paragraph(
+                            f"<b>Tanggal Kesepakatan</b><br/>{_format_report_date(result.get('agreed_date'))}",
+                            table_cell_style,
+                        ),
+                    ],
+                    [
+                        _report_paragraph(f"<b>Analisis AI</b><br/>{result.get('reasoning') or '-'}", table_cell_style),
+                        _report_paragraph(
+                            f"<b>Umpan Balik / Saran</b><br/>{result.get('feedback') or '-'}"
+                            f"<br/><br/><b>Improvement</b><br/>{result.get('improvement_suggestions') or '-'}",
+                            table_cell_style,
+                        ),
+                    ],
+                ],
+                colWidths=[3.45 * inch, 2.75 * inch],
+            )
+            detail_table.setStyle(
+                TableStyle(
+                    [
+                        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e6fffb")),
+                        ("BOX", (0, 0), (-1, -1), 1, colors.HexColor("#99f6e4")),
+                        ("INNERGRID", (0, 0), (-1, -1), 0.75, colors.HexColor("#ccfbf1")),
+                        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                        ("LEFTPADDING", (0, 0), (-1, -1), 10),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+                        ("TOPPADDING", (0, 0), (-1, -1), 8),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+                    ]
+                )
+            )
+            story.append(detail_table)
             if result.get("auditor_status"):
-                status_text = {
-                    "confirm": "✓ Confirm (Sesuai)",
-                    "non-confirm-minor": "⚠ Non-Confirm Minor",
-                    "non-confirm-major": "✗ Non-Confirm Major",
-                }.get(result["auditor_status"], result["auditor_status"])
-                story.append(Paragraph(f"<b>Penilaian Auditor:</b> {status_text}", styles["Normal"]))
-
-                if result.get("auditor_notes"):
-                    story.append(Paragraph(f"<b>Catatan Auditor:</b> {result['auditor_notes']}", styles["Normal"]))
-
-                if result.get("agreed_date"):
-                    try:
-                        date_obj = datetime.fromisoformat(result["agreed_date"])
-                        date_str = date_obj.strftime("%d %B %Y")
-                    except Exception:
-                        date_str = result["agreed_date"]
-                    story.append(Paragraph(f"<b>Tanggal Kesepakatan:</b> {date_str}", styles["Normal"]))
-
-            story.append(Paragraph("<b>Analisis AI (Referensi):</b>", styles["Normal"]))
-            story.append(Paragraph(f"Status: {result['status']} | Skor: {result['score']:.2f}", styles["Normal"]))
-            story.append(Paragraph(f"Reasoning: {result['reasoning'][:150]}...", styles["Normal"]))
-            story.append(Spacer(1, 0.2 * inch))
+                story.append(Paragraph(f"Filter auditor aktif: {status_text}", small_style))
+            story.append(Spacer(1, 0.16 * inch))
 
         document.build(story)
         pdf_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
@@ -1117,7 +1706,7 @@ async def seed_initial_data(current_user: User = Depends(get_current_user)):
 
     existing_criteria = await db.criteria.count_documents({})
     existing_clauses = await db.clauses.count_documents({})
-    if existing_criteria > 0 and existing_clauses == 166:
+    if existing_criteria > 0 and existing_clauses == 166 and await dataset_is_aligned():
         return {
             "message": "Data already seeded",
             "criteria_count": existing_criteria,

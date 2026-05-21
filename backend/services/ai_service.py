@@ -14,6 +14,8 @@ DEFAULT_MODEL_RISK = os.environ.get("OPENROUTER_MODEL_RISK", "anthropic/claude-3
 DEFAULT_MODEL_REPORT = os.environ.get("OPENROUTER_MODEL_REPORT", "google/gemini-2.0-flash-001")
 DEFAULT_STT_MODEL = os.environ.get("OPENROUTER_STT_MODEL", "openai/whisper-large-v3")
 DEFAULT_PDF_ENGINE = os.environ.get("OPENROUTER_PDF_ENGINE", "mistral-ocr")
+MAX_ANALYSIS_DOCUMENTS = int(os.environ.get("OPENROUTER_MAX_ANALYSIS_DOCUMENTS", "12"))
+MAX_ANALYSIS_BINARY_BYTES = int(os.environ.get("OPENROUTER_MAX_ANALYSIS_BINARY_BYTES", str(8 * 1024 * 1024)))
 
 
 def _headers(api_key: str) -> dict[str, str]:
@@ -122,6 +124,45 @@ def _truncate_document_text(value: str, limit: int = 12000) -> str:
     return cleaned[:limit].rstrip() + "... [truncated]"
 
 
+def _select_documents_for_analysis(documents: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[str], bool]:
+    selected: list[dict[str, Any]] = []
+    skipped: list[str] = []
+    remaining_binary_budget = MAX_ANALYSIS_BINARY_BYTES
+
+    prioritized = sorted(
+        documents,
+        key=lambda doc: (
+            0 if (doc.get("extracted_text") or "").strip() else 1,
+            len(doc.get("content", b"")) if doc.get("content") else 0,
+        ),
+    )
+
+    for doc in prioritized:
+        filename = doc.get("filename", "unknown")
+        binary = doc.get("content", b"") or b""
+        mime_type = doc.get("mime_type", "application/octet-stream")
+        include_binary = mime_type.startswith("image/") or mime_type == "application/pdf"
+
+        item = dict(doc)
+        if include_binary:
+            if len(selected) >= MAX_ANALYSIS_DOCUMENTS or len(binary) > remaining_binary_budget:
+                item["content"] = b""
+                skipped.append(filename)
+            else:
+                remaining_binary_budget -= len(binary)
+        else:
+            item["content"] = b""
+            if len(selected) >= MAX_ANALYSIS_DOCUMENTS:
+                skipped.append(filename)
+
+        if len(selected) < MAX_ANALYSIS_DOCUMENTS:
+            selected.append(item)
+        else:
+            skipped.append(filename)
+
+    return selected, skipped, len(skipped) > 0
+
+
 def _data_url(mime_type: str, file_bytes: bytes) -> str:
     return f"data:{mime_type};base64,{_encode_file_to_base64(file_bytes)}"
 
@@ -210,6 +251,17 @@ def _build_analysis_content(
     additional_context: str = "",
 ) -> list[dict[str, Any]]:
     context_block = f"KONTEKS TAMBAHAN: {additional_context}\n\n" if additional_context else ""
+    selected_documents, skipped_documents, is_truncated = _select_documents_for_analysis(documents)
+    truncation_block = ""
+    if is_truncated:
+        skipped_preview = ", ".join(skipped_documents[:8])
+        if len(skipped_documents) > 8:
+            skipped_preview += f", dan {len(skipped_documents) - 8} dokumen lain"
+        truncation_block = (
+            "CATATAN PEMROSESAN: Jumlah/ukuran evidence terlalu besar untuk dikirim penuh ke model. "
+            f"Analisis difokuskan pada {len(selected_documents)} dokumen prioritas. "
+            f"Dokumen lain tetap harus dianggap ada sebagai konteks metadata: {skipped_preview}.\n\n"
+        )
 
     content: list[dict[str, Any]] = [
         {
@@ -223,6 +275,7 @@ def _build_analysis_content(
                 f"{knowledge_base}\n\n"
                 "Jika knowledge base memuat blok 'ACUAN PRIMER', jadikan blok itu sebagai acuan pertama sebelum bagian lain.\n\n"
                 f"{context_block}"
+                f"{truncation_block}"
                 "Nilai kesesuaian dokumen yang diupload dengan dokumen yang diminta.\n\n"
                 "Jangan menjadikan tahun, tanggal, atau nomor dokumen sebagai penentu utama.\n"
                 "Fokus pada substansi, otorisasi, cakupan, implementasi, dan keterlacakan evidence.\n\n"
@@ -236,7 +289,7 @@ def _build_analysis_content(
         }
     ]
 
-    for doc in documents:
+    for doc in selected_documents:
         filename = doc.get("filename", "unknown")
         mime_type = doc.get("mime_type", "application/octet-stream")
         binary = doc.get("content", b"")
@@ -402,7 +455,7 @@ async def analyze_document_evidence(
         ],
     }
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    async with httpx.AsyncClient(timeout=180.0) as client:
         response = await client.post(
             f'{runtime["base_url"]}/chat/completions',
             headers=_headers(api_key),

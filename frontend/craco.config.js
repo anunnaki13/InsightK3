@@ -109,4 +109,22 @@ if (config.enableVisualEdits || config.enableHealthCheck) {
   };
 }
 
+const existingDevServer = webpackConfig.devServer;
+webpackConfig.devServer = (devServerConfig, options) => {
+  if (existingDevServer) {
+    devServerConfig = existingDevServer(devServerConfig, options);
+  }
+
+  return {
+    ...devServerConfig,
+    proxy: {
+      ...(devServerConfig.proxy || {}),
+      "/api": {
+        target: process.env.REACT_APP_BACKEND_URL || "http://127.0.0.1:8001",
+        changeOrigin: true,
+      },
+    },
+  };
+};
+
 module.exports = webpackConfig;

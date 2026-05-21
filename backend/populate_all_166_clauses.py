@@ -4,19 +4,15 @@ Based on the complete SMK3 document
 """
 
 import asyncio
-from motor.motor_asyncio import AsyncIOMotorClient
 import os
 from dotenv import load_dotenv
 from pathlib import Path
 import uuid
 from datetime import datetime, timezone
+from database import db
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
-
-mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
 
 async def populate_all_clauses():
     """Populate all 166 SMK3 clauses with PLN NP PLTU Tenayan specific requirements"""
@@ -841,4 +837,3 @@ Ini adalah persyaratan spesifik untuk PLN Nusantara Power (sebelumnya PJB) PLTU 
 
 if __name__ == "__main__":
     asyncio.run(populate_all_clauses())
-    client.close()

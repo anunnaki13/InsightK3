@@ -137,8 +137,32 @@ class RecommendationUpdate(BaseModel):
     completed_at: Optional[str] = None
 
 
+class SurveyNote(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    clause_id: str
+    note_text: str
+    created_by: str
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: Optional[datetime] = None
+
+
+class SurveyNoteCreate(BaseModel):
+    clause_id: str
+    note_text: str
+
+
+class SurveyNoteUpdate(BaseModel):
+    note_text: str
+
+
+class ReportGenerateRequest(BaseModel):
+    detail_mode: str = "all"
+
+
 class DashboardStats(BaseModel):
     total_clauses: int
+    total_evidence_files: int
     audited_clauses: int
     auditor_assessed_clauses: int
     confirm_count: int
@@ -149,3 +173,6 @@ class DashboardStats(BaseModel):
     compliant_clauses: int
     non_compliant_clauses: int
     criteria_scores: List[Dict[str, Any]]
+    non_confirm_items: List[Dict[str, Any]]
+    non_confirm_major_items: List[Dict[str, Any]]
+    non_confirm_minor_items: List[Dict[str, Any]]

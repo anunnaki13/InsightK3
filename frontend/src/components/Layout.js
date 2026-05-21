@@ -23,21 +23,27 @@ const Layout = ({ children }) => {
   const { user, logout } = useContext(AppContext);
   const location = useLocation();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const isSurveyor = user?.role === 'surveyor';
 
   const navigation = [
     { section: 'Audit SMK3', name: 'Dashboard', path: '/', icon: LayoutDashboard, hint: 'Ringkasan eksekutif' },
     { section: 'Audit SMK3', name: 'Kriteria', path: '/criteria', icon: ListChecks, hint: 'Master audit SMK3' },
     { section: 'Audit SMK3', name: 'Klausul', path: '/clauses', icon: FileCheck, hint: 'Knowledge base & mapping' },
-    { section: 'Audit SMK3', name: 'Audit', path: '/audit', icon: ClipboardCheck, hint: 'Evidence & assessment' },
-    { section: 'Audit SMK3', name: 'Rekomendasi', path: '/recommendations', icon: FileText, hint: 'Action tracking' },
-    { section: 'Audit SMK3', name: 'Laporan', path: '/reports', icon: FileText, hint: 'Output manajemen' },
+    { section: 'Audit SMK3', name: 'Audit', path: '/audit', icon: ClipboardCheck, hint: isSurveyor ? 'Evidence & catatan' : 'Evidence & assessment' },
+    { section: 'Audit SMK3', name: isSurveyor ? 'Catatan' : 'Rekomendasi', path: '/recommendations', icon: FileText, hint: isSurveyor ? 'Catatan surveyor' : 'Action tracking' },
+    { section: 'Audit SMK3', name: isSurveyor ? 'Laporan Catatan' : 'Laporan', path: '/reports', icon: FileText, hint: isSurveyor ? 'Laporan surveyor' : 'Output manajemen' },
     { section: 'Risk Intelligence', name: 'ERM Risk', path: '/erm-risk', icon: ShieldAlert, hint: 'Risk register awal', roles: ['admin', 'auditor', 'risk_officer', 'management'] },
     { section: 'Risk Intelligence', name: 'Underwriting', path: '/underwriting-survey', icon: ScrollText, hint: 'Survey underwriting', roles: ['admin', 'risk_officer', 'surveyor', 'management'] },
     { section: 'Risk Intelligence', name: 'Field Survey', path: '/field-risk-survey', icon: ClipboardList, hint: 'Survey lapangan', roles: ['admin', 'risk_officer', 'surveyor', 'management'] },
     { section: 'Risk Intelligence', name: 'Equipment', path: '/emergency-equipment', icon: Siren, hint: 'Readiness tanggap darurat', roles: ['admin', 'risk_officer', 'surveyor', 'management'] },
     { section: 'Risk Intelligence', name: 'Heatmap', path: '/risk-heatmap', icon: PanelsTopLeft, hint: 'Dashboard konsolidasi', roles: ['admin', 'auditor', 'risk_officer', 'management'] },
     { section: 'System', name: 'Settings', path: '/settings', icon: SlidersHorizontal, hint: 'Konfigurasi AI & sistem', roles: ['admin'] },
-  ].filter((item) => !item.roles || item.roles.includes(user?.role));
+  ].filter((item) => {
+    if (user?.role === 'surveyor' && item.section === 'Risk Intelligence') {
+      return false;
+    }
+    return !item.roles || item.roles.includes(user?.role);
+  });
 
   const isActive = (path) => location.pathname === path;
   const activeItem = navigation.find((item) => isActive(item.path)) || navigation[0];
@@ -83,11 +89,11 @@ const Layout = ({ children }) => {
           <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-500">Modules</p>
         </div>
 
-        <nav className="space-y-5">
+        <nav className="space-y-6">
           {Object.entries(navSections).map(([section, items]) => (
             <div key={section}>
               <p className="mb-2 px-2 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">{section}</p>
-              <div className="space-y-1.5">
+              <div className="space-y-2.5">
                 {items.map((item) => {
                   const Icon = item.icon;
                   const active = isActive(item.path);

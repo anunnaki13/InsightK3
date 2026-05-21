@@ -1,5 +1,6 @@
 import React, { useState, useContext } from 'react';
 import { AppContext } from '../App';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -10,6 +11,7 @@ import { ShieldCheck, Sparkles, Workflow } from 'lucide-react';
 
 const AuthPage = () => {
   const { login, register } = useContext(AppContext);
+  const navigate = useNavigate();
   const [loginData, setLoginData] = useState({ email: '', password: '' });
   const [registerData, setRegisterData] = useState({ email: '', password: '', name: '', role: 'auditee' });
   const [loading, setLoading] = useState(false);
@@ -17,7 +19,10 @@ const AuthPage = () => {
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
-    await login(loginData.email, loginData.password);
+    const success = await login(loginData.email, loginData.password);
+    if (success) {
+      navigate('/', { replace: true });
+    }
     setLoading(false);
   };
 

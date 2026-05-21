@@ -3,19 +3,15 @@ Script to add remaining 61 clauses (106-166) to complete all 166 SMK3 audit clau
 """
 
 import asyncio
-from motor.motor_asyncio import AsyncIOMotorClient
 import os
 from dotenv import load_dotenv
 from pathlib import Path
 import uuid
 from datetime import datetime, timezone
+from database import db
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
-
-mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
 
 async def add_remaining_clauses():
     """Add remaining 61 clauses (106-166)"""
@@ -534,4 +530,3 @@ Ini adalah persyaratan spesifik untuk PLN Nusantara Power (sebelumnya PJB) PLTU 
 
 if __name__ == "__main__":
     asyncio.run(add_remaining_clauses())
-    client.close()
